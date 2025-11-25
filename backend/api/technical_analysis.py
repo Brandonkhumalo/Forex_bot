@@ -831,8 +831,9 @@ class TechnicalAnalysis:
             'smc': smc_signal,
         }
         
-        if patterns:
-            strategies['candlestick'] = patterns[-1]['signal']
+        recent_patterns = [p for p in patterns if p['index'] >= len(self.data) - 5]
+        if recent_patterns:
+            strategies['candlestick'] = recent_patterns[-1]['signal']
         else:
             strategies['candlestick'] = Signal.NEUTRAL
         
@@ -846,11 +847,11 @@ class TechnicalAnalysis:
         weights = {
             'smc': 2.0,
             'market_structure': 1.5,
-            'candlestick': 1.5,
+            'ma_crossover': 1.2,
+            'macd': 1.2,
             'breakout': 1.3,
-            'ma_crossover': 1.0,
+            'candlestick': 1.0,
             'rsi_trend': 1.0,
-            'macd': 1.0,
             'bollinger': 0.8,
             'rsi_range': 0.8,
         }
