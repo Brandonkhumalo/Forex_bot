@@ -3,8 +3,18 @@ import requests
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
+import threading
 
 logger = logging.getLogger(__name__)
+
+_session_cache = {
+    'cst_token': None,
+    'session_token': None,
+    'expires_at': None,
+    'lock': threading.Lock()
+}
+
+SESSION_DURATION = timedelta(minutes=9)
 
 
 class CapitalComAPI:
@@ -41,6 +51,15 @@ class CapitalComAPI:
             logger.warning("Capital.com API credentials not configured")
             return False
         
+        with _session_cache['lock']:
+            if (_session_cache['cst_token'] and 
+                _session_cache['session_token'] and 
+                _session_cache['expires_at'] and 
+                datetime.now() < _session_cache['expires_at']):
+                self.cst_token = _session_cache['cst_token']
+                self.session_token = _session_cache['session_token']
+                return True
+        
         try:
             headers = {
                 'X-CAP-API-KEY': self.api_key,
@@ -63,6 +82,12 @@ class CapitalComAPI:
             if response.status_code == 200:
                 self.cst_token = response.headers.get('CST')
                 self.session_token = response.headers.get('X-SECURITY-TOKEN')
+                
+                with _session_cache['lock']:
+                    _session_cache['cst_token'] = self.cst_token
+                    _session_cache['session_token'] = self.session_token
+                    _session_cache['expires_at'] = datetime.now() + SESSION_DURATION
+                
                 logger.info("Successfully authenticated with Capital.com")
                 return True
             else:
