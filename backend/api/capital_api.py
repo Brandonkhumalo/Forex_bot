@@ -14,7 +14,14 @@ _session_cache = {
     'lock': threading.Lock()
 }
 
+_positions_cache = {
+    'data': None,
+    'expires_at': None,
+    'lock': threading.Lock()
+}
+
 SESSION_DURATION = timedelta(minutes=9)
+POSITIONS_CACHE_DURATION = timedelta(seconds=10)
 
 
 class CapitalComAPI:
@@ -272,10 +279,13 @@ class CapitalComAPI:
                 if deal_reference:
                     confirmation = self.confirm_trade(deal_reference)
                     if confirmation:
-                        deal_id = confirmation.get('dealId')
                         affected_deals = confirmation.get('affectedDeals', [])
-                        if not deal_id and affected_deals:
+                        if affected_deals:
                             deal_id = affected_deals[0].get('dealId')
+                        else:
+                            deal_id = confirmation.get('dealId')
+                        
+                        logger.info(f"Position confirmed - dealId from affectedDeals: {deal_id}")
                         
                         return {
                             'dealId': deal_id,
@@ -324,7 +334,15 @@ class CapitalComAPI:
             logger.error(f"Error closing position: {str(e)}")
             return None
     
-    def get_open_positions(self) -> Optional[List[Dict]]:
+    def get_open_positions(self, force_refresh: bool = False) -> Optional[List[Dict]]:
+        with _positions_cache['lock']:
+            if (not force_refresh and 
+                _positions_cache['data'] is not None and 
+                _positions_cache['expires_at'] and 
+                datetime.now() < _positions_cache['expires_at']):
+                logger.debug("Using cached positions data")
+                return _positions_cache['data']
+        
         try:
             response = self.session.get(
                 f'{self.base_url}/api/v1/positions',
@@ -338,21 +356,51 @@ class CapitalComAPI:
                 for pos in data.get('positions', []):
                     position = pos.get('position', {})
                     market = pos.get('market', {})
+                    
+                    current_bid = market.get('bid', 0)
+                    current_offer = market.get('offer', 0)
+                    direction = position.get('direction', 'BUY')
+                    current_level = current_bid if direction == 'SELL' else current_offer
+                    
+                    upl = position.get('upl', 0)
+                    if upl == 0:
+                        open_level = position.get('level', 0)
+                        size = position.get('size', 0)
+                        if direction == 'SELL':
+                            upl = (open_level - current_level) * size
+                        else:
+                            upl = (current_level - open_level) * size
+                    
                     positions.append({
                         'dealId': position.get('dealId'),
                         'epic': market.get('epic'),
-                        'direction': position.get('direction'),
+                        'direction': direction,
                         'size': position.get('size'),
                         'openLevel': position.get('level'),
-                        'currentLevel': market.get('bid') if position.get('direction') == 'SELL' else market.get('offer'),
-                        'profitLoss': position.get('upl', 0),
+                        'currentLevel': current_level,
+                        'profitLoss': upl,
                         'stopLevel': position.get('stopLevel'),
                         'profitLevel': position.get('limitLevel'),
                     })
+                
+                with _positions_cache['lock']:
+                    _positions_cache['data'] = positions
+                    _positions_cache['expires_at'] = datetime.now() + POSITIONS_CACHE_DURATION
+                
+                logger.info(f"Fetched {len(positions)} open positions from Capital.com")
                 return positions
-            return None
+            else:
+                logger.warning(f"Failed to get positions: {response.status_code}")
+                with _positions_cache['lock']:
+                    if _positions_cache['data'] is not None:
+                        logger.info("Returning stale cached positions due to API error")
+                        return _positions_cache['data']
+                return None
         except Exception as e:
             logger.error(f"Error getting open positions: {str(e)}")
+            with _positions_cache['lock']:
+                if _positions_cache['data'] is not None:
+                    return _positions_cache['data']
             return None
     
     def get_economic_calendar(self, currencies: List[str] = None) -> Optional[List[Dict]]:
