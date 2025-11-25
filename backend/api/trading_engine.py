@@ -560,20 +560,71 @@ class TradingEngine:
         if not self.authenticated:
             return
         
-        positions = self.api.get_open_positions()
-        if not positions:
+        positions = self.api.get_open_positions(force_refresh=True)
+        if positions is None:
             return
         
         position_map = {p['dealId']: p for p in positions}
+        position_deal_ids = set(position_map.keys())
         
         open_trades = Trade.objects.filter(user=self.user, status='open')
         
+        trades_closed_by_broker = []
+        
         for trade in open_trades:
-            if trade.capital_api_deal_id and trade.capital_api_deal_id in position_map:
-                pos = position_map[trade.capital_api_deal_id]
-                trade.current_price = Decimal(str(pos['currentLevel']))
-                trade.profit_loss = Decimal(str(pos['profitLoss']))
-                trade.save()
+            if trade.capital_api_deal_id:
+                if trade.capital_api_deal_id in position_map:
+                    pos = position_map[trade.capital_api_deal_id]
+                    trade.current_price = Decimal(str(pos['currentLevel']))
+                    trade.profit_loss = Decimal(str(pos['profitLoss']))
+                    trade.save()
+                else:
+                    trades_closed_by_broker.append(trade)
+        
+        for trade in trades_closed_by_broker:
+            self._handle_broker_closed_trade(trade)
+        
+        if trades_closed_by_broker:
+            self._check_ml_retrain()
+    
+    def _handle_broker_closed_trade(self, trade: Trade):
+        """Handle a trade that was closed by Capital.com (SL/TP hit)"""
+        logger.info(f"Detected broker-closed trade: {trade.pair} {trade.direction} (deal_id: {trade.capital_api_deal_id})")
+        
+        exit_price = trade.current_price or trade.entry_price
+        
+        if trade.direction == 'buy':
+            if trade.stop_loss and exit_price <= trade.stop_loss:
+                exit_price = trade.stop_loss
+                outcome_reason = 'stop_loss'
+            elif trade.take_profit and exit_price >= trade.take_profit:
+                exit_price = trade.take_profit
+                outcome_reason = 'take_profit'
+            else:
+                outcome_reason = 'broker_closed'
+        else:
+            if trade.stop_loss and exit_price >= trade.stop_loss:
+                exit_price = trade.stop_loss
+                outcome_reason = 'stop_loss'
+            elif trade.take_profit and exit_price <= trade.take_profit:
+                exit_price = trade.take_profit
+                outcome_reason = 'take_profit'
+            else:
+                outcome_reason = 'broker_closed'
+        
+        trade.close_trade(exit_price)
+        
+        self._update_session_stats(trade)
+        
+        logger.info(f"Trade closed by broker ({outcome_reason}): {trade.pair} {trade.direction} P/L: ${trade.profit_loss}")
+    
+    def _check_ml_retrain(self):
+        """Check if ML model needs retraining after trades are closed"""
+        if self.ml_engine.should_retrain():
+            logger.info(f"Triggering ML retrain for user {self.user.email}")
+            result = self.ml_engine.train()
+            if result:
+                logger.info(f"ML model retrained - accuracy: {result.get('accuracy', 0):.2%}")
     
     def check_and_close_trades(self):
         if not self.authenticated:
