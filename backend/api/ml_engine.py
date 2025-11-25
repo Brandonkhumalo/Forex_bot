@@ -130,7 +130,7 @@ class MLTradingEngine:
             return 0.5
         return (price - lower) / (upper - lower)
     
-    def train(self, min_trades: int = 30) -> Optional[Dict]:
+    def train(self, min_trades: int = 15) -> Optional[Dict]:
         trades = list(Trade.objects.filter(
             user=self.user,
             status='closed'
@@ -280,7 +280,7 @@ class MLTradingEngine:
         
         if not ml_model:
             closed_trades = Trade.objects.filter(user=self.user, status='closed').count()
-            return closed_trades >= 30
+            return closed_trades >= 15
         
         current_trades = Trade.objects.filter(user=self.user, status='closed').count()
         trades_since_training = current_trades - ml_model.trades_trained_on
