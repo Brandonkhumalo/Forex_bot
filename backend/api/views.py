@@ -383,7 +383,20 @@ def get_trades(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_open_trades(request):
-    trades = Trade.objects.filter(user=request.user, status='open')
+    trades = list(Trade.objects.filter(user=request.user, status='open'))
+    
+    api = CapitalComAPI()
+    if api.authenticate():
+        positions = api.get_open_positions()
+        if positions:
+            positions_map = {p['dealId']: p for p in positions}
+            for trade in trades:
+                if trade.capital_api_deal_id and trade.capital_api_deal_id in positions_map:
+                    pos = positions_map[trade.capital_api_deal_id]
+                    trade.current_price = Decimal(str(pos.get('currentLevel', trade.entry_price)))
+                    trade.profit_loss = Decimal(str(pos.get('profitLoss', 0)))
+                    trade.save()
+    
     serializer = TradeSerializer(trades, many=True)
     return Response(serializer.data)
 

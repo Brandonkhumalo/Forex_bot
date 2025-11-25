@@ -443,6 +443,11 @@ export default function Dashboard() {
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
                 Active Trades
+                {openTrades && openTrades.length > 0 && (
+                  <Badge variant="secondary" className="ml-2 font-mono">
+                    {openTrades.length}
+                  </Badge>
+                )}
               </CardTitle>
               <CardDescription>
                 Currently open positions
@@ -501,38 +506,49 @@ export default function Dashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {openTrades.map((trade) => (
-                    <TableRow key={trade.id} data-testid={`row-trade-${trade.id}`}>
-                      <TableCell className="font-medium">{trade.pair}</TableCell>
-                      <TableCell>
-                        <Badge variant={trade.direction === 'buy' ? 'default' : 'secondary'}>
-                          {trade.direction.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatNumber(trade.entry_price, 5)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {trade.current_price ? formatNumber(trade.current_price, 5) : '-'}
-                      </TableCell>
-                      <TableCell className={`text-right font-mono ${
-                        trade.profit_loss >= 0 ? 'text-success' : 'text-destructive'
-                      }`}>
-                        {formatCurrency(trade.profit_loss)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => closePositionMutation.mutate(trade.id)}
-                          disabled={closePositionMutation.isPending}
-                          data-testid={`button-close-trade-${trade.id}`}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {openTrades.map((trade) => {
+                    const profitLoss = typeof trade.profit_loss === 'string' 
+                      ? parseFloat(trade.profit_loss) 
+                      : (trade.profit_loss ?? 0);
+                    const isProfit = profitLoss > 0;
+                    const isLoss = profitLoss < 0;
+                    
+                    return (
+                      <TableRow key={trade.id} data-testid={`row-trade-${trade.id}`}>
+                        <TableCell className="font-medium">{trade.pair}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={trade.direction === 'buy' ? 'default' : 'destructive'}
+                            className={trade.direction === 'buy' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                          >
+                            {trade.direction.toUpperCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatNumber(trade.entry_price, 5)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {trade.current_price ? formatNumber(trade.current_price, 5) : formatNumber(trade.entry_price, 5)}
+                        </TableCell>
+                        <TableCell className={`text-right font-mono font-semibold ${
+                          isProfit ? 'text-green-500' : isLoss ? 'text-red-500' : ''
+                        }`}>
+                          {isProfit ? '+' : ''}{formatCurrency(profitLoss)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            onClick={() => closePositionMutation.mutate(trade.id)}
+                            disabled={closePositionMutation.isPending}
+                            data-testid={`button-close-trade-${trade.id}`}
+                          >
+                            <X className="h-4 w-4 text-white" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : (
@@ -573,35 +589,46 @@ export default function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentTrades.map((trade) => (
-                  <TableRow key={trade.id} data-testid={`row-history-${trade.id}`}>
-                    <TableCell className="font-medium">{trade.pair}</TableCell>
-                    <TableCell>
-                      <Badge variant={trade.direction === 'buy' ? 'default' : 'secondary'}>
-                        {trade.direction.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {trade.strategy_used || 'Technical'}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatNumber(trade.entry_price, 5)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {trade.current_price ? formatNumber(trade.current_price, 5) : '-'}
-                    </TableCell>
-                    <TableCell className={`text-right font-mono ${
-                      trade.profit_loss >= 0 ? 'text-success' : 'text-destructive'
-                    }`}>
-                      {formatCurrency(trade.profit_loss)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={trade.profit_loss >= 0 ? 'default' : 'destructive'}>
-                        {trade.profit_loss >= 0 ? 'WIN' : 'LOSS'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {recentTrades.map((trade) => {
+                  const profitLoss = typeof trade.profit_loss === 'string' 
+                    ? parseFloat(trade.profit_loss) 
+                    : (trade.profit_loss ?? 0);
+                  const isProfit = profitLoss > 0;
+                  const isLoss = profitLoss < 0;
+                  
+                  return (
+                    <TableRow key={trade.id} data-testid={`row-history-${trade.id}`}>
+                      <TableCell className="font-medium">{trade.pair}</TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={trade.direction === 'buy' ? 'default' : 'destructive'}
+                          className={trade.direction === 'buy' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                        >
+                          {trade.direction.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {trade.strategy_used || 'Technical'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatNumber(trade.entry_price, 5)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {trade.current_price ? formatNumber(trade.current_price, 5) : '-'}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono font-semibold ${
+                        isProfit ? 'text-green-500' : isLoss ? 'text-red-500' : ''
+                      }`}>
+                        {isProfit ? '+' : ''}{formatCurrency(profitLoss)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={isProfit ? 'default' : 'destructive'} className={isProfit ? 'bg-green-600' : ''}>
+                          {isProfit ? 'WIN' : 'LOSS'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (
