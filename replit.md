@@ -6,21 +6,23 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 ## Project Structure
 
 ```
-├── client/          # React frontend (JS/TypeScript)
+├── frontend/        # React frontend (TypeScript + Tailwind)
 ├── backend/         # Django REST Framework backend (Python)
-├── server/          # Minimal dev server proxy (auto-starts Django)
+├── server/          # Minimal dev startup script
+├── client -> frontend  # Symlink for Vite compatibility
 └── attached_assets/ # Static assets
 ```
 
 ## Architecture
 
 ### Frontend (React + TypeScript + Tailwind)
-- **Location**: `client/src/`
+- **Location**: `frontend/src/`
 - **Framework**: React 18 with Vite
 - **Styling**: Tailwind CSS with shadcn/ui components
 - **Routing**: wouter
 - **State Management**: TanStack Query for server state
 - **Charts**: Recharts for visualizations
+- **API**: Direct calls to Django via CORS (configurable via VITE_API_BASE_URL)
 
 ### Backend (Django + Django REST Framework)
 - **Location**: `backend/`
@@ -28,11 +30,12 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 - **Authentication**: JWT via djangorestframework-simplejwt
 - **Database**: PostgreSQL (via DATABASE_URL)
 - **ML**: scikit-learn for trading predictions
+- **Port**: 8000
 
-### Development Server
-- **Location**: `server/`
-- **Purpose**: Minimal proxy that starts Django and forwards /api/* calls
-- **Port**: 5000 (serves both frontend and proxied API to Django on 8000)
+### Development Startup
+- **Location**: `server/index-dev.ts`
+- **Purpose**: Starts both Django (port 8000) and Vite (port 5000)
+- Runs database migrations automatically on startup
 
 ## Key Files
 
@@ -45,23 +48,21 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 - `backend/api/trading_engine.py` - Autonomous trading logic
 
 ### Frontend
-- `client/src/pages/dashboard.tsx` - Main trading dashboard with AI controls
-- `client/src/pages/analytics.tsx` - Performance analytics and ML metrics
-- `client/src/pages/login.tsx` - User authentication
-- `client/src/components/app-sidebar.tsx` - Navigation sidebar
+- `frontend/src/pages/dashboard.tsx` - Main trading dashboard with AI controls
+- `frontend/src/pages/analytics.tsx` - Performance analytics and ML metrics
+- `frontend/src/pages/login.tsx` - User authentication
+- `frontend/src/components/app-sidebar.tsx` - Navigation sidebar
+- `frontend/src/lib/queryClient.ts` - API client with JWT auth
 
 ## Running the Application
 
-### Start Frontend (Express + Vite)
 ```bash
 npm run dev
 ```
-This starts on port 5000 and proxies `/api/*` to Django.
+This starts both Django backend (port 8000) and Vite frontend (port 5000).
 
-### Start Django Backend
+### Start Backend Only
 ```bash
-./start_django.sh
-# Or manually:
 cd backend && python manage.py runserver 0.0.0.0:8000
 ```
 
@@ -86,6 +87,7 @@ cd backend && python manage.py migrate
 
 ### ML Status
 - `GET /api/ml/status/` - ML model status and metrics
+- `GET /api/status/` - API configuration status
 
 ## Environment Variables Required
 - `DATABASE_URL` - PostgreSQL connection string (auto-provided)
@@ -93,6 +95,7 @@ cd backend && python manage.py migrate
 - `CAPITAL_COM_API_KEY` - Capital.com API key
 - `CAPITAL_COM_PASSWORD` - Capital.com password
 - `CAPITAL_COM_IDENTIFIER` - Capital.com account identifier
+- `VITE_API_BASE_URL` - Frontend API base URL (defaults to http://localhost:8000)
 
 ## ML Trading Logic
 
@@ -119,15 +122,11 @@ cd backend && python manage.py migrate
 - Risk per trade: 2% of available capital
 
 ## Recent Changes (November 2025)
-- Complete Django backend with JWT authentication
-- Capital.com API integration with credential validation
-- Technical analysis engine (RSI, MACD, Bollinger Bands, SMC)
-- ML prediction system with scikit-learn (trains after 30 trades)
-- 24/7 autonomous trading scheduler
-- Dashboard with API status alerts and AI controls
-- Analytics page with performance charts
+- Restructured project: frontend/ (React) + backend/ (Django)
+- Direct Django API calls via CORS (no Express proxy needed)
+- Simplified server folder to minimal startup script
+- JWT authentication with localStorage token storage
 - Database migrations run automatically on startup
-- Express proxy properly forwards request bodies
 
 ## API Status Endpoint
 - `GET /api/status/` - Check if Capital.com credentials are configured
