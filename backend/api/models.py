@@ -89,6 +89,7 @@ class Trade(models.Model):
 
 class MLModel(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ml_models')
+    pair = models.CharField(max_length=20, default='ALL')
     model_version = models.IntegerField(default=1)
     model_data = models.BinaryField(null=True, blank=True)
     accuracy = models.FloatField(default=0)

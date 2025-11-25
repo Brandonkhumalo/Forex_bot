@@ -7,7 +7,7 @@ import pandas as pd
 from .models import Trade, TradingSettings, TradingSession
 from .capital_api import CapitalComAPI
 from .technical_analysis import TechnicalAnalysis, analyze_multi_timeframe, Signal
-from .ml_engine import MLTradingEngine
+from .ml_engine import MLTradingEngine, MIN_TRADES_PER_PAIR
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,8 @@ class TradingEngine:
     
     TIMEFRAMES = ['15m', '30m', '1H', '4H']
     
-    BOOTSTRAP_TRADE_THRESHOLD = 30
+    BOOTSTRAP_TRADE_THRESHOLD = 30  # Legacy - now using per-pair threshold
+    MIN_TRADES_PER_PAIR_THRESHOLD = MIN_TRADES_PER_PAIR
     
     MIN_POSITION_SIZES = {
         'GBP/USD': 500,
@@ -69,8 +70,21 @@ class TradingEngine:
     def get_trade_count(self) -> int:
         return Trade.objects.filter(user=self.user, status='closed').count()
     
+    def get_pair_trade_count(self, pair: str) -> int:
+        return Trade.objects.filter(user=self.user, pair=pair, status='closed').count()
+    
     def is_bootstrap_mode(self) -> bool:
         return self.get_trade_count() < self.BOOTSTRAP_TRADE_THRESHOLD
+    
+    def is_pair_ml_ready(self, pair: str) -> bool:
+        return self.ml_engine.has_model_for_pair(pair)
+    
+    def train_pair_if_ready(self, pair: str):
+        pair_count = self.get_pair_trade_count(pair)
+        if pair_count >= self.MIN_TRADES_PER_PAIR_THRESHOLD:
+            if self.ml_engine.should_retrain_pair(pair):
+                logger.info(f"Training ML model for {pair} (has {pair_count} closed trades)")
+                self.ml_engine.train_pair(pair)
     
     def get_capital_limit(self, pair: str) -> Decimal:
         if pair == 'XAU/USD':
@@ -377,11 +391,9 @@ class TradingEngine:
     
     def analyze_pair_ml(self, pair: str, data_dict: Dict[str, pd.DataFrame], ta_analysis: Dict) -> Dict:
         """
-        ML mode analysis combining TA with ML predictions
+        ML mode analysis combining TA with ML predictions (per-pair)
         """
-        if self.ml_engine.should_retrain():
-            logger.info(f"Retraining ML model for user {self.user.email}")
-            self.ml_engine.train()
+        self.train_pair_if_ready(pair)
         
         entry_result = ta_analysis.get('timeframe_results', {}).get('15m', {})
         if not entry_result:
@@ -394,7 +406,8 @@ class TradingEngine:
         ml_result = self.ml_engine.get_combined_signal(
             {'signal': ta_signal.value if hasattr(ta_signal, 'value') else ta_signal, 
              'confidence': ta_confidence},
-            indicators
+            indicators,
+            pair=pair
         )
         
         ta_analysis['ml_prediction'] = ml_result['ml_prediction']
@@ -428,12 +441,14 @@ class TradingEngine:
             logger.warning(f"Insufficient data for {pair}")
             return None
         
-        is_bootstrap = self.is_bootstrap_mode()
+        pair_ml_ready = self.is_pair_ml_ready(pair)
+        pair_trade_count = self.get_pair_trade_count(pair)
         
         analysis = self.analyze_pair_bootstrap(pair, data_dict)
         
-        if not is_bootstrap:
+        if pair_ml_ready:
             analysis = self.analyze_pair_ml(pair, data_dict, analysis)
+            analysis['mode'] = 'ml'
         else:
             analysis['ml_prediction'] = None
             analysis['ml_confidence'] = None
@@ -443,6 +458,7 @@ class TradingEngine:
             analysis['combined_confidence'] = analysis.get('confidence', 0)
             analysis['signals_aligned'] = True
             analysis['mode'] = 'bootstrap'
+            analysis['pair_trades_until_ml'] = max(0, self.MIN_TRADES_PER_PAIR_THRESHOLD - pair_trade_count)
         
         return analysis
     
@@ -668,6 +684,8 @@ class TradingEngine:
         
         self.settings.current_capital += trade.profit_loss
         self.settings.save()
+        
+        self.train_pair_if_ready(trade.pair)
     
     def run_trading_cycle(self):
         if not self.settings.ai_enabled:
@@ -679,9 +697,9 @@ class TradingEngine:
         self.update_open_trades()
         self.check_and_close_trades()
         
-        mode = 'Bootstrap' if self.is_bootstrap_mode() else 'ML'
-        trade_count = self.get_trade_count()
-        logger.info(f"Running trading cycle in {mode} mode ({trade_count}/{self.BOOTSTRAP_TRADE_THRESHOLD} trades)")
+        total_trades = self.get_trade_count()
+        ml_ready_pairs = sum(1 for pair in self.TRADING_PAIRS if self.is_pair_ml_ready(pair))
+        logger.info(f"Running trading cycle - {total_trades} total trades, {ml_ready_pairs}/{len(self.TRADING_PAIRS)} pairs with ML")
         
         trades_executed = 0
         pairs_analyzed = []

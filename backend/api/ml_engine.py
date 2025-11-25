@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 AI_LOGS_DIR = Path(__file__).resolve().parent.parent / 'ai_logs'
 
+MIN_TRADES_PER_PAIR = 5
+
+TRADING_PAIRS = [
+    'GBP/USD', 'EUR/USD', 'USD/JPY', 'AUD/USD',
+    'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD'
+]
+
 
 class AILogger:
     def __init__(self, user_email: str):
@@ -42,15 +49,15 @@ class AILogger:
         else:
             logger.info(message)
     
-    def log_training_start(self, num_trades: int):
+    def log_training_start(self, pair: str, num_trades: int):
         self.log(f"=" * 60)
-        self.log(f"ML MODEL TRAINING STARTED")
+        self.log(f"ML MODEL TRAINING STARTED FOR {pair}")
         self.log(f"User: {self.user_email}")
-        self.log(f"Total trades for training: {num_trades}")
+        self.log(f"Trades for training: {num_trades}")
         self.log(f"=" * 60)
     
-    def log_training_complete(self, metrics: Dict):
-        self.log(f"TRAINING COMPLETE - Model v{metrics.get('version', 'N/A')}")
+    def log_training_complete(self, pair: str, metrics: Dict):
+        self.log(f"TRAINING COMPLETE - {pair} Model v{metrics.get('version', 'N/A')}")
         self.log(f"  Accuracy: {metrics.get('accuracy', 0):.2%}")
         self.log(f"  Precision: {metrics.get('precision', 0):.2%}")
         self.log(f"  Recall: {metrics.get('recall', 0):.2%}")
@@ -67,8 +74,8 @@ class AILogger:
     def log_prediction(self, pair: str, prediction: float, confidence: float, ta_signal: float):
         self.log(f"PREDICTION: {pair} | ML={prediction:.2f} ({confidence:.1%}) | TA={ta_signal}")
     
-    def log_retrain_trigger(self, trades_since: int):
-        self.log(f"RETRAIN TRIGGERED: {trades_since} new trades since last training")
+    def log_retrain_trigger(self, pair: str, trades_since: int):
+        self.log(f"RETRAIN TRIGGERED for {pair}: {trades_since} new trades since last training")
     
     def log_error(self, error_message: str):
         self.log(f"ERROR: {error_message}", level='ERROR')
@@ -77,8 +84,8 @@ class AILogger:
 class MLTradingEngine:
     def __init__(self, user):
         self.user = user
-        self.model = None
-        self.scaler = StandardScaler()
+        self.models = {}
+        self.scalers = {}
         self.ai_logger = AILogger(user.email)
         self.feature_columns = [
             'rsi', 'macd', 'macd_signal', 'macd_histogram',
@@ -87,6 +94,34 @@ class MLTradingEngine:
             'trend_strength', 'price_momentum',
             'hour_of_day', 'day_of_week',
         ]
+    
+    def get_pair_training_progress(self) -> List[Dict]:
+        progress = []
+        
+        for pair in TRADING_PAIRS:
+            closed_trades = Trade.objects.filter(
+                user=self.user,
+                pair=pair,
+                status='closed'
+            ).count()
+            
+            ml_model = MLModel.objects.filter(
+                user=self.user,
+                pair=pair,
+                is_active=True
+            ).first()
+            
+            progress.append({
+                'pair': pair,
+                'closed_trades': closed_trades,
+                'required_trades': MIN_TRADES_PER_PAIR,
+                'is_trained': ml_model is not None,
+                'model_version': ml_model.model_version if ml_model else 0,
+                'accuracy': ml_model.accuracy if ml_model else 0,
+                'progress_percent': min(100, int((closed_trades / MIN_TRADES_PER_PAIR) * 100)),
+            })
+        
+        return progress
     
     def prepare_features(self, trades: List[Trade]) -> Tuple[np.ndarray, np.ndarray]:
         features = []
@@ -130,70 +165,100 @@ class MLTradingEngine:
             return 0.5
         return (price - lower) / (upper - lower)
     
-    def train(self, min_trades: int = 15) -> Optional[Dict]:
+    def train_pair(self, pair: str) -> Optional[Dict]:
         trades = list(Trade.objects.filter(
             user=self.user,
+            pair=pair,
             status='closed'
         ).order_by('closed_at'))
         
-        if len(trades) < min_trades:
-            logger.info(f"Not enough trades to train. Have {len(trades)}, need {min_trades}")
+        if len(trades) < MIN_TRADES_PER_PAIR:
+            logger.info(f"Not enough trades for {pair}. Have {len(trades)}, need {MIN_TRADES_PER_PAIR}")
             return None
         
-        self.ai_logger.log_training_start(len(trades))
+        self.ai_logger.log_training_start(pair, len(trades))
         
         X, y = self.prepare_features(trades)
         
         if len(X) == 0:
-            self.ai_logger.log_error("No valid features extracted from trades")
+            self.ai_logger.log_error(f"No valid features extracted from {pair} trades")
             return None
         
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
         
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y if len(np.unique(y)) > 1 else None
-        )
+        scaler = StandardScaler()
         
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
-        
-        self.model = RandomForestClassifier(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            class_weight='balanced'
-        )
-        
-        self.model.fit(X_train_scaled, y_train)
-        
-        y_pred = self.model.predict(X_test_scaled)
-        
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred, zero_division=0)
-        recall = recall_score(y_test, y_pred, zero_division=0)
-        f1 = f1_score(y_test, y_pred, zero_division=0)
-        
-        cv_scores = cross_val_score(self.model, X_train_scaled, y_train, cv=3)
+        if len(X) < 3:
+            X_scaled = scaler.fit_transform(X)
+            model = RandomForestClassifier(
+                n_estimators=50,
+                max_depth=5,
+                min_samples_split=2,
+                min_samples_leaf=1,
+                random_state=42,
+                class_weight='balanced'
+            )
+            model.fit(X_scaled, y)
+            accuracy = 0.5
+            precision = 0.5
+            recall = 0.5
+            f1 = 0.5
+            cv_mean = 0.5
+        else:
+            test_size = max(1, int(len(X) * 0.2))
+            if len(X) - test_size < 2:
+                test_size = 1
+            
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=42
+            )
+            
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
+            
+            model = RandomForestClassifier(
+                n_estimators=100,
+                max_depth=10,
+                min_samples_split=2,
+                min_samples_leaf=1,
+                random_state=42,
+                class_weight='balanced'
+            )
+            
+            model.fit(X_train_scaled, y_train)
+            
+            y_pred = model.predict(X_test_scaled)
+            
+            accuracy = accuracy_score(y_test, y_pred)
+            precision = precision_score(y_test, y_pred, zero_division=0.5)
+            recall = recall_score(y_test, y_pred, zero_division=0.5)
+            f1 = f1_score(y_test, y_pred, zero_division=0.5)
+            
+            cv_folds = min(3, len(X_train))
+            if cv_folds >= 2:
+                cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=cv_folds)
+                cv_mean = float(cv_scores.mean())
+            else:
+                cv_mean = accuracy
         
         feature_importance = dict(zip(
             self.feature_columns,
-            self.model.feature_importances_.tolist()
+            model.feature_importances_.tolist()
         ))
         
-        MLModel.objects.filter(user=self.user, is_active=True).update(is_active=False)
+        MLModel.objects.filter(user=self.user, pair=pair, is_active=True).update(is_active=False)
         
-        latest_version = MLModel.objects.filter(user=self.user).count() + 1
+        latest_version = MLModel.objects.filter(user=self.user, pair=pair).count() + 1
         
         model_data = pickle.dumps({
-            'model': self.model,
-            'scaler': self.scaler,
+            'model': model,
+            'scaler': scaler,
             'feature_columns': self.feature_columns,
         })
         
         ml_model = MLModel.objects.create(
             user=self.user,
+            pair=pair,
             model_version=latest_version,
             model_data=model_data,
             accuracy=accuracy,
@@ -203,14 +268,14 @@ class MLTradingEngine:
             trades_trained_on=len(trades),
             feature_importance=feature_importance,
             training_metrics={
-                'cv_scores': cv_scores.tolist(),
-                'cv_mean': float(cv_scores.mean()),
-                'cv_std': float(cv_scores.std()),
-                'test_size': len(X_test),
-                'train_size': len(X_train),
+                'cv_mean': cv_mean,
+                'train_size': len(X),
             },
             is_active=True,
         )
+        
+        self.models[pair] = model
+        self.scalers[pair] = scaler
         
         metrics = {
             'version': latest_version,
@@ -218,35 +283,69 @@ class MLTradingEngine:
             'precision': precision,
             'recall': recall,
             'f1_score': f1,
-            'cv_mean': float(cv_scores.mean()),
+            'cv_mean': cv_mean,
             'feature_importance': feature_importance,
         }
         
-        self.ai_logger.log_training_complete(metrics)
-        logger.info(f"Trained ML model v{latest_version} with accuracy {accuracy:.2%}")
+        self.ai_logger.log_training_complete(pair, metrics)
+        logger.info(f"Trained ML model for {pair} v{latest_version} with accuracy {accuracy:.2%}")
         
         return metrics
     
-    def load_model(self) -> bool:
-        ml_model = MLModel.objects.filter(user=self.user, is_active=True).first()
+    def train_all_eligible_pairs(self) -> Dict[str, Optional[Dict]]:
+        results = {}
+        
+        for pair in TRADING_PAIRS:
+            closed_count = Trade.objects.filter(
+                user=self.user,
+                pair=pair,
+                status='closed'
+            ).count()
+            
+            if closed_count >= MIN_TRADES_PER_PAIR:
+                ml_model = MLModel.objects.filter(
+                    user=self.user,
+                    pair=pair,
+                    is_active=True
+                ).first()
+                
+                if not ml_model or self.should_retrain_pair(pair):
+                    results[pair] = self.train_pair(pair)
+        
+        return results
+    
+    def load_model(self, pair: str) -> bool:
+        if pair in self.models:
+            return True
+        
+        ml_model = MLModel.objects.filter(user=self.user, pair=pair, is_active=True).first()
         
         if not ml_model or not ml_model.model_data:
             return False
         
         try:
             data = pickle.loads(ml_model.model_data)
-            self.model = data['model']
-            self.scaler = data['scaler']
-            self.feature_columns = data.get('feature_columns', self.feature_columns)
+            self.models[pair] = data['model']
+            self.scalers[pair] = data['scaler']
             return True
         except Exception as e:
-            logger.error(f"Error loading model: {str(e)}")
+            logger.error(f"Error loading model for {pair}: {str(e)}")
             return False
     
-    def predict(self, indicators: Dict, signals: Dict) -> Tuple[float, float]:
-        if not self.model:
-            if not self.load_model():
-                return 0.5, 0.0
+    def has_model_for_pair(self, pair: str) -> bool:
+        if pair in self.models:
+            return True
+        return MLModel.objects.filter(user=self.user, pair=pair, is_active=True).exists()
+    
+    def predict(self, pair: str, indicators: Dict, signals: Dict) -> Tuple[float, float]:
+        if not self.load_model(pair):
+            return 0.5, 0.0
+        
+        model = self.models.get(pair)
+        scaler = self.scalers.get(pair)
+        
+        if not model or not scaler:
+            return 0.5, 0.0
         
         feature_row = [
             indicators.get('rsi', 50),
@@ -267,31 +366,53 @@ class MLTradingEngine:
         
         X = np.array([feature_row])
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-        X_scaled = self.scaler.transform(X)
+        X_scaled = scaler.transform(X)
         
-        prediction = self.model.predict(X_scaled)[0]
-        probabilities = self.model.predict_proba(X_scaled)[0]
+        prediction = model.predict(X_scaled)[0]
+        probabilities = model.predict_proba(X_scaled)[0]
         confidence = max(probabilities)
         
         return float(prediction), float(confidence)
     
-    def should_retrain(self) -> bool:
-        ml_model = MLModel.objects.filter(user=self.user, is_active=True).first()
+    def should_retrain_pair(self, pair: str) -> bool:
+        ml_model = MLModel.objects.filter(user=self.user, pair=pair, is_active=True).first()
         
         if not ml_model:
-            closed_trades = Trade.objects.filter(user=self.user, status='closed').count()
-            return closed_trades >= 15
+            closed_trades = Trade.objects.filter(
+                user=self.user,
+                pair=pair,
+                status='closed'
+            ).count()
+            return closed_trades >= MIN_TRADES_PER_PAIR
         
-        current_trades = Trade.objects.filter(user=self.user, status='closed').count()
+        current_trades = Trade.objects.filter(
+            user=self.user,
+            pair=pair,
+            status='closed'
+        ).count()
+        
         trades_since_training = current_trades - ml_model.trades_trained_on
         
-        if trades_since_training >= 10:
-            self.ai_logger.log_retrain_trigger(trades_since_training)
+        if trades_since_training >= 3:
+            self.ai_logger.log_retrain_trigger(pair, trades_since_training)
             return True
+        
         return False
     
     def get_combined_signal(self, technical_signal: Dict, indicators: Dict, pair: str = 'UNKNOWN') -> Dict:
-        ml_prediction, ml_confidence = self.predict(indicators, technical_signal)
+        if not self.has_model_for_pair(pair):
+            return {
+                'signal': technical_signal.get('signal', 0),
+                'confidence': technical_signal.get('confidence', 0.5),
+                'ml_prediction': None,
+                'ml_confidence': 0,
+                'ta_signal': technical_signal.get('signal', 0),
+                'ta_confidence': technical_signal.get('confidence', 0.5),
+                'aligned': True,
+                'using_ml': False,
+            }
+        
+        ml_prediction, ml_confidence = self.predict(pair, indicators, technical_signal)
         
         ta_signal = technical_signal.get('signal', 0)
         ta_confidence = technical_signal.get('confidence', 0.5)
@@ -319,4 +440,5 @@ class MLTradingEngine:
             'ta_signal': ta_signal,
             'ta_confidence': ta_confidence,
             'aligned': ml_signal == ta_signal,
+            'using_ml': True,
         }

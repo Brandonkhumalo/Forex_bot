@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { 
   DollarSign, TrendingUp, TrendingDown, Activity, 
   Power, Brain, Clock, Target, AlertCircle, Loader2,
-  Wifi, WifiOff, AlertTriangle, X, CheckCircle, XCircle
+  Wifi, WifiOff, AlertTriangle, X, CheckCircle, XCircle,
+  ChevronLeft, ChevronRight, GraduationCap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -50,6 +52,25 @@ interface Trade {
   status: string;
   opened_at: string;
   strategy_used: string;
+}
+
+interface PairProgress {
+  pair: string;
+  closed_trades: number;
+  required_trades: number;
+  is_trained: boolean;
+  model_version: number;
+  accuracy: number;
+  progress_percent: number;
+}
+
+interface MLStatus {
+  total_closed_trades: number;
+  min_trades_per_pair: number;
+  trading_pairs: string[];
+  pair_progress: PairProgress[];
+  trained_pairs_count: number;
+  total_pairs: number;
 }
 
 function formatCurrency(value: number): string {
@@ -118,6 +139,7 @@ function StatCard({
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const [pairGalleryIndex, setPairGalleryIndex] = useState(0);
 
   const { data: apiStatus, isLoading: apiStatusLoading } = useQuery<ApiStatus>({
     queryKey: ['/api/status/'],
@@ -165,6 +187,27 @@ export default function Dashboard() {
     },
     refetchInterval: 30000,
   });
+
+  const { data: mlStatus, isLoading: mlStatusLoading } = useQuery<MLStatus>({
+    queryKey: ['/api/ml/status/'],
+    queryFn: async () => {
+      const res = await authFetch('/api/ml/status/');
+      if (!res.ok) throw new Error('Failed to fetch ML status');
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const currentPair = mlStatus?.pair_progress?.[pairGalleryIndex];
+  const totalPairs = mlStatus?.pair_progress?.length ?? 0;
+
+  const goToPrevPair = () => {
+    setPairGalleryIndex((prev) => (prev - 1 + totalPairs) % totalPairs);
+  };
+
+  const goToNextPair = () => {
+    setPairGalleryIndex((prev) => (prev + 1) % totalPairs);
+  };
 
   const toggleAIMutation = useMutation({
     mutationFn: async () => {
@@ -279,7 +322,6 @@ export default function Dashboard() {
   const apiConnected = apiStatus?.api_connected ?? false;
 
   const aiEnabled = dashboard?.ai_status ?? false;
-  const mlProgress = dashboard ? Math.min(100, ((30 - dashboard.trades_until_ml) / 30) * 100) : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -398,39 +440,87 @@ export default function Dashboard() {
             )}
 
             <div className="space-y-3 pt-4 border-t">
-              <div className="flex items-center gap-2">
-                <Brain className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">ML Model Status</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Per-Pair ML Training</span>
+                </div>
+                <Badge variant="outline" className="font-mono text-xs">
+                  {mlStatus?.trained_pairs_count ?? 0}/{mlStatus?.total_pairs ?? 8} trained
+                </Badge>
               </div>
               
-              {dashboard?.ml_model_active ? (
-                <div className="space-y-2">
-                  <Badge variant="default" className="bg-success">
-                    ML Active
-                  </Badge>
-                  <p className="text-sm text-muted-foreground">
-                    Accuracy: <span className="font-mono font-medium">{dashboard.ml_accuracy}%</span>
-                  </p>
-                  {dashboard.trades_until_retrain > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Next retrain in {dashboard.trades_until_retrain} trades
-                    </p>
-                  )}
+              {mlStatusLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : currentPair ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={goToPrevPair}
+                      disabled={totalPairs <= 1}
+                      data-testid="button-prev-pair"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    <div className="text-center flex-1">
+                      <div className="font-bold text-lg font-mono">{currentPair.pair}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {pairGalleryIndex + 1} of {totalPairs}
+                      </div>
+                    </div>
+                    
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={goToNextPair}
+                      disabled={totalPairs <= 1}
+                      data-testid="button-next-pair"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    {currentPair.is_trained ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-success" />
+                          <span className="text-sm font-medium text-success">ML Model Active</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Model v{currentPair.model_version} • Accuracy: <span className="font-mono">{(currentPair.accuracy * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Trained on {currentPair.closed_trades} trades
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Brain className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">Technical Analysis Only</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span>Training progress</span>
+                            <span className="font-mono font-medium">
+                              {currentPair.closed_trades}/{currentPair.required_trades} trades
+                            </span>
+                          </div>
+                          <Progress value={currentPair.progress_percent} className="h-2" />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {currentPair.required_trades - currentPair.closed_trades} more trades needed for ML
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <Badge variant="secondary">Technical Analysis Only</Badge>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span>Training progress</span>
-                      <span className="font-mono">{30 - (dashboard?.trades_until_ml ?? 30)}/30</span>
-                    </div>
-                    <Progress value={mlProgress} className="h-2" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {dashboard?.trades_until_ml ?? 30} trades until ML activation
-                  </p>
-                </div>
+                <div className="text-sm text-muted-foreground">No trading pairs data available</div>
               )}
             </div>
 

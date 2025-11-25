@@ -605,21 +605,22 @@ def get_market_data(request, pair, timeframe):
 @permission_classes([IsAuthenticated])
 def get_ml_status(request):
     user = request.user
+    from .ml_engine import MLTradingEngine, TRADING_PAIRS, MIN_TRADES_PER_PAIR
+    
+    ml_engine = MLTradingEngine(user)
+    pair_progress = ml_engine.get_pair_training_progress()
+    
     closed_trades = Trade.objects.filter(user=user, status='closed').count()
-    ml_model = MLModel.objects.filter(user=user, is_active=True).first()
+    trained_pairs = [p for p in pair_progress if p['is_trained']]
     
     data = {
-        'ml_enabled': closed_trades >= 30 and ml_model is not None,
         'total_closed_trades': closed_trades,
-        'trades_until_ml': max(0, 30 - closed_trades),
-        'model': MLModelSerializer(ml_model).data if ml_model else None,
-        'last_trained': ml_model.trained_at.isoformat() if ml_model else None,
-        'trades_until_retrain': 0,
+        'min_trades_per_pair': MIN_TRADES_PER_PAIR,
+        'trading_pairs': TRADING_PAIRS,
+        'pair_progress': pair_progress,
+        'trained_pairs_count': len(trained_pairs),
+        'total_pairs': len(TRADING_PAIRS),
     }
-    
-    if ml_model:
-        trades_since = closed_trades - ml_model.trades_trained_on
-        data['trades_until_retrain'] = max(0, 10 - trades_since)
     
     return Response(data)
 
