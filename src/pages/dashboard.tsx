@@ -465,7 +465,7 @@ export default function Dashboard() {
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
                   onClick={() => closeProfitableMutation.mutate()}
                   disabled={closeProfitableMutation.isPending || !openTrades.some(t => t.profit_loss > 0)}
                   data-testid="button-take-profit"
