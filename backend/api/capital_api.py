@@ -211,10 +211,34 @@ class CapitalComAPI:
             logger.error(f"Error getting historical prices: {str(e)}")
             return None
     
+    def confirm_trade(self, deal_reference: str) -> Optional[Dict]:
+        try:
+            import time
+            time.sleep(0.5)
+            
+            response = self.session.get(
+                f'{self.base_url}/api/v1/confirms/{deal_reference}',
+                headers=self._get_headers(),
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Trade confirmed: {data}")
+                return data
+            else:
+                logger.error(f"Failed to confirm trade: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            logger.error(f"Error confirming trade: {str(e)}")
+            return None
+    
     def open_position(self, pair: str, direction: str, size: float, 
                       stop_loss: float = None, take_profit: float = None) -> Optional[Dict]:
         try:
             epic = self.pair_mapping.get(pair, pair)
+            
+            logger.info(f"Opening position: {pair} ({epic}) {direction} size={size}")
             
             payload = {
                 'epic': epic,
@@ -225,9 +249,11 @@ class CapitalComAPI:
             }
             
             if stop_loss:
-                payload['stopLevel'] = stop_loss
+                payload['stopLevel'] = round(stop_loss, 5)
             if take_profit:
-                payload['profitLevel'] = take_profit
+                payload['profitLevel'] = round(take_profit, 5)
+            
+            logger.info(f"Position payload: {payload}")
             
             response = self.session.post(
                 f'{self.base_url}/api/v1/positions',
@@ -236,11 +262,35 @@ class CapitalComAPI:
                 timeout=30
             )
             
+            logger.info(f"Position response: {response.status_code} - {response.text[:500] if response.text else 'No body'}")
+            
             if response.status_code in [200, 201]:
                 data = response.json()
+                deal_reference = data.get('dealReference')
+                deal_status = data.get('dealStatus')
+                
+                if deal_reference:
+                    confirmation = self.confirm_trade(deal_reference)
+                    if confirmation:
+                        deal_id = confirmation.get('dealId')
+                        affected_deals = confirmation.get('affectedDeals', [])
+                        if not deal_id and affected_deals:
+                            deal_id = affected_deals[0].get('dealId')
+                        
+                        return {
+                            'dealId': deal_id,
+                            'dealReference': deal_reference,
+                            'status': confirmation.get('dealStatus', deal_status),
+                            'epic': epic,
+                            'direction': direction,
+                            'size': size,
+                            'reason': confirmation.get('reason', ''),
+                        }
+                
                 return {
                     'dealId': data.get('dealId'),
-                    'status': data.get('dealStatus'),
+                    'dealReference': deal_reference,
+                    'status': deal_status,
                     'epic': epic,
                     'direction': direction,
                     'size': size,

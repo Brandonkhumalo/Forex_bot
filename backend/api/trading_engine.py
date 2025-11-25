@@ -42,6 +42,17 @@ class TradingEngine:
     
     BOOTSTRAP_TRADE_THRESHOLD = 30
     
+    MIN_POSITION_SIZES = {
+        'GBP/USD': 500,
+        'EUR/USD': 500,
+        'USD/JPY': 500,
+        'AUD/USD': 500,
+        'USD/CAD': 500,
+        'NZD/USD': 500,
+        'USD/CHF': 500,
+        'XAU/USD': 0.5,
+    }
+    
     def __init__(self, user):
         self.user = user
         self.settings = TradingSettings.objects.get_or_create(user=user)[0]
@@ -88,16 +99,57 @@ class TradingEngine:
         if available <= 0:
             return Decimal('0')
         
+        min_size = Decimal(str(self.MIN_POSITION_SIZES.get(pair, 500)))
+        
+        leverage = Decimal('30')
+        
+        if pair == 'XAU/USD':
+            margin_for_min = (min_size * Decimal(str(entry_price))) / leverage
+        else:
+            margin_for_min = min_size / leverage
+        
+        if margin_for_min > available:
+            logger.warning(f"  {pair}: Insufficient margin for minimum position (need ${margin_for_min:.2f}, have ${available:.2f})")
+            return Decimal('0')
+        
         risk_per_trade = available * Decimal('0.05')
         
         stop_distance = abs(entry_price - stop_loss)
         if stop_distance == 0:
-            return Decimal('0')
+            stop_distance = entry_price * 0.01
         
-        position_size = risk_per_trade / Decimal(str(stop_distance))
-        position_size = min(position_size, available)
+        pip_value = Decimal('1') if 'JPY' in pair else Decimal('0.0001')
         
-        return position_size.quantize(Decimal('0.01'))
+        if pair == 'XAU/USD':
+            risk_based_size = risk_per_trade / Decimal(str(stop_distance))
+            position_size = max(risk_based_size, min_size)
+            position_size = position_size.quantize(Decimal('0.01'))
+        else:
+            risk_based_size = risk_per_trade / Decimal(str(stop_distance))
+            position_size = max(risk_based_size, min_size)
+            position_size = max(position_size, Decimal('500'))
+            position_size = position_size.quantize(Decimal('1'))
+        
+        if pair == 'XAU/USD':
+            margin_required = (position_size * Decimal(str(entry_price))) / leverage
+        else:
+            margin_required = position_size / leverage
+        
+        max_margin = available * Decimal('0.5')
+        if margin_required > max_margin:
+            if pair == 'XAU/USD':
+                position_size = (max_margin * leverage) / Decimal(str(entry_price))
+                position_size = position_size.quantize(Decimal('0.01'))
+            else:
+                position_size = max_margin * leverage
+                position_size = position_size.quantize(Decimal('1'))
+            
+            if position_size < min_size:
+                logger.warning(f"  {pair}: Position size {position_size} below minimum {min_size}")
+                return Decimal('0')
+        
+        logger.info(f"  {pair}: Position size = {position_size} units (margin ~${margin_required:.2f}, min={min_size})")
+        return position_size
     
     def get_market_data(self, pair: str) -> Dict[str, pd.DataFrame]:
         data_dict = {}
