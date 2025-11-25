@@ -88,7 +88,7 @@ class TradingEngine:
         if available <= 0:
             return Decimal('0')
         
-        risk_per_trade = available * Decimal('0.02')
+        risk_per_trade = available * Decimal('0.05')
         
         stop_distance = abs(entry_price - stop_loss)
         if stop_distance == 0:
