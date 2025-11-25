@@ -82,15 +82,15 @@ class Trade(models.Model):
         if actual_profit_loss is not None:
             self.profit_loss = Decimal(str(actual_profit_loss))
         else:
-            if self.direction == 'buy':
-                raw_pnl = (Decimal(str(exit_price)) - self.entry_price) * self.position_size
-            else:
-                raw_pnl = (self.entry_price - Decimal(str(exit_price))) * self.position_size
+            exit_decimal = Decimal(str(exit_price))
             
-            if 'JPY' in self.pair:
-                self.profit_loss = raw_pnl / Decimal(str(exit_price))
-            elif self.pair == 'XAU/USD':
-                self.profit_loss = raw_pnl
+            if self.direction == 'buy':
+                raw_pnl = (exit_decimal - self.entry_price) * self.position_size
+            else:
+                raw_pnl = (self.entry_price - exit_decimal) * self.position_size
+            
+            if self.pair.startswith('USD/'):
+                self.profit_loss = raw_pnl / exit_decimal
             else:
                 self.profit_loss = raw_pnl
         
