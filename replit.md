@@ -3,6 +3,15 @@
 ## Overview
 A comprehensive ML-based trading AI engine using Capital.com API with Python/Django REST Framework backend and React/Tailwind frontend. The system performs autonomous 24/7 forex/commodities trading on a demo account, combining technical analysis with machine learning predictions.
 
+## Project Structure
+
+```
+├── client/          # React frontend (JS/TypeScript)
+├── backend/         # Django REST Framework backend (Python)
+├── server/          # Minimal dev server proxy (auto-starts Django)
+└── attached_assets/ # Static assets
+```
+
 ## Architecture
 
 ### Frontend (React + TypeScript + Tailwind)
@@ -20,10 +29,10 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 - **Database**: PostgreSQL (via DATABASE_URL)
 - **ML**: scikit-learn for trading predictions
 
-### Express Proxy Server
+### Development Server
 - **Location**: `server/`
-- **Purpose**: Proxies API calls to Django backend
-- **Port**: 5000 (serves both frontend and proxied API)
+- **Purpose**: Minimal proxy that starts Django and forwards /api/* calls
+- **Port**: 5000 (serves both frontend and proxied API to Django on 8000)
 
 ## Key Files
 
