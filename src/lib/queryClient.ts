@@ -1,19 +1,10 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
-}
-
-function buildUrl(path: string): string {
-  if (path.startsWith("http")) {
-    return path;
-  }
-  return `${API_BASE}${path}`;
 }
 
 export async function apiRequest(
@@ -31,7 +22,7 @@ export async function apiRequest(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(buildUrl(url), {
+  const res = await fetch(url, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
@@ -56,7 +47,7 @@ export const getQueryFn: <T>(options: {
     }
 
     const path = queryKey.join("/");
-    const res = await fetch(buildUrl(path), {
+    const res = await fetch(path, {
       headers,
       credentials: "include",
     });
