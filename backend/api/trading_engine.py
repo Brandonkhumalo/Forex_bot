@@ -729,8 +729,8 @@ class TradingEngine:
         
         return {
             'status': 'completed',
-            'mode': mode,
-            'trade_count': trade_count,
+            'total_trades': total_trades,
+            'ml_ready_pairs': ml_ready_pairs,
             'pairs_analyzed': len(pairs_analyzed),
             'trades_executed': trades_executed,
             'signals_found': signals_found
