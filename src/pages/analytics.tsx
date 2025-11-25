@@ -47,10 +47,24 @@ interface AnalyticsData {
   };
 }
 
+interface PairProgress {
+  pair: string;
+  closed_trades: number;
+  required_trades: number;
+  is_trained: boolean;
+  model_version: number;
+  accuracy: number;
+  progress_percent: number;
+}
+
 interface MLStatus {
   ml_enabled: boolean;
   total_closed_trades: number;
   trades_until_ml: number;
+  min_trades_per_pair: number;
+  pair_progress: PairProgress[];
+  trained_pairs_count: number;
+  total_pairs: number;
   model: {
     accuracy: number;
     precision: number;
@@ -458,23 +472,68 @@ export default function Analytics() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Brain className="h-12 w-12 text-muted-foreground mb-4" />
-              <h4 className="font-semibold mb-2">ML Model Not Active</h4>
-              <p className="text-muted-foreground max-w-md">
-                The machine learning model will activate after completing 30 trades. 
-                Currently using technical analysis strategies for trading decisions.
-              </p>
-              {mlStatus && (
-                <div className="mt-4 w-full max-w-xs">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>Training Progress</span>
-                    <span className="font-mono">{mlStatus.total_closed_trades}/30</span>
-                  </div>
-                  <Progress 
-                    value={(mlStatus.total_closed_trades / 30) * 100} 
-                    className="h-2" 
-                  />
+            <div className="space-y-6">
+              <div className="flex flex-col items-center text-center">
+                <Brain className="h-10 w-10 text-muted-foreground mb-3" />
+                <h4 className="font-semibold mb-1">Per-Pair ML Training</h4>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Each pair trains its own ML model after {mlStatus?.min_trades_per_pair || 5} closed trades.
+                  Pairs without enough data use technical analysis.
+                </p>
+                {mlStatus && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {mlStatus.trained_pairs_count}/{mlStatus.total_pairs} pairs trained
+                  </p>
+                )}
+              </div>
+              
+              {mlStatus?.pair_progress && (
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                  {mlStatus.pair_progress.map((pairStatus) => (
+                    <div 
+                      key={pairStatus.pair}
+                      className={`p-3 rounded-lg border ${
+                        pairStatus.is_trained 
+                          ? 'border-success/50 bg-success/5' 
+                          : 'border-border bg-muted/30'
+                      }`}
+                      data-testid={`ml-status-${pairStatus.pair.replace('/', '-')}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">{pairStatus.pair}</span>
+                        {pairStatus.is_trained ? (
+                          <Badge variant="default" className="text-xs">ML Active</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">Bootstrap</Badge>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="font-mono">
+                            {pairStatus.closed_trades}/{pairStatus.required_trades}
+                          </span>
+                        </div>
+                        <Progress 
+                          value={pairStatus.progress_percent} 
+                          className="h-1.5" 
+                        />
+                        {pairStatus.is_trained && pairStatus.accuracy > 0 && (
+                          <div className="flex justify-between text-xs pt-1">
+                            <span className="text-muted-foreground">Accuracy</span>
+                            <span className="font-mono text-success">
+                              {(pairStatus.accuracy * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        )}
+                        {!pairStatus.is_trained && (
+                          <p className="text-xs text-muted-foreground pt-1">
+                            {pairStatus.required_trades - pairStatus.closed_trades} more trades needed
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

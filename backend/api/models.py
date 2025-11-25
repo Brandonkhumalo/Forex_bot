@@ -73,15 +73,26 @@ class Trade(models.Model):
     def __str__(self):
         return f"{self.pair} {self.direction} - {self.status}"
     
-    def close_trade(self, exit_price):
+    def close_trade(self, exit_price, actual_profit_loss=None):
+        from decimal import Decimal
         self.exit_price = exit_price
         self.status = 'closed'
         self.closed_at = timezone.now()
         
-        if self.direction == 'buy':
-            self.profit_loss = (exit_price - self.entry_price) * self.position_size
+        if actual_profit_loss is not None:
+            self.profit_loss = Decimal(str(actual_profit_loss))
         else:
-            self.profit_loss = (self.entry_price - exit_price) * self.position_size
+            if self.direction == 'buy':
+                raw_pnl = (Decimal(str(exit_price)) - self.entry_price) * self.position_size
+            else:
+                raw_pnl = (self.entry_price - Decimal(str(exit_price))) * self.position_size
+            
+            if 'JPY' in self.pair:
+                self.profit_loss = raw_pnl / Decimal(str(exit_price))
+            elif self.pair == 'XAU/USD':
+                self.profit_loss = raw_pnl
+            else:
+                self.profit_loss = raw_pnl
         
         self.outcome = 'win' if self.profit_loss > 0 else 'loss'
         self.save()
