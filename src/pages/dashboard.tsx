@@ -32,6 +32,7 @@ interface DashboardData {
   account_balance: number;
   available_capital: number;
   total_profit_loss: number;
+  daily_pnl: number;
   win_rate: number;
   ai_status: boolean;
   total_trades: number;
@@ -365,7 +366,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Account Balance"
           value={formatCurrency(dashboard?.account_balance ?? 0)}
@@ -376,6 +377,14 @@ export default function Dashboard() {
           title="Available Capital"
           value={formatCurrency(dashboard?.available_capital ?? 0)}
           icon={Target}
+          loading={dashboardLoading}
+        />
+        <StatCard
+          title="Daily P/L"
+          value={formatCurrency(dashboard?.daily_pnl ?? 0)}
+          icon={Clock}
+          trend={(dashboard?.daily_pnl ?? 0) >= 0 ? 'up' : 'down'}
+          subtitle="Closed trades today"
           loading={dashboardLoading}
         />
         <StatCard

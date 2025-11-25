@@ -71,6 +71,9 @@ def get_current_user(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_dashboard(request):
+    from django.utils import timezone
+    from datetime import timedelta
+    
     user = request.user
     settings = TradingSettings.objects.get_or_create(user=user)[0]
     
@@ -80,6 +83,13 @@ def get_dashboard(request):
     winning_trades = closed_trades.filter(outcome='win').count()
     
     total_pnl = closed_trades.aggregate(
+        total=Sum('profit_loss')
+    )['total'] or Decimal('0')
+    
+    # Calculate daily P&L (trades closed today)
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_closed = closed_trades.filter(closed_at__gte=today_start)
+    daily_pnl = today_closed.aggregate(
         total=Sum('profit_loss')
     )['total'] or Decimal('0')
     
@@ -124,6 +134,7 @@ def get_dashboard(request):
         'account_balance': account_balance,
         'available_capital': available_capital,
         'total_profit_loss': total_pnl,
+        'daily_pnl': daily_pnl,
         'win_rate': round(win_rate, 2),
         'ai_status': settings.ai_enabled,
         'total_trades': total_trades,
