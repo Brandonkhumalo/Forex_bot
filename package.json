@@ -4,9 +4,9 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index-dev.ts",
-    "build": "vite build && esbuild server/index-prod.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/index.js",
-    "start": "NODE_ENV=production node dist/index.js",
+    "dev": "concurrently \"vite\" \"cd backend && python manage.py migrate --run-syncdb && python manage.py runserver 0.0.0.0:8000\"",
+    "build": "vite build",
+    "start": "cd backend && python manage.py runserver 0.0.0.0:8000",
     "check": "tsc",
     "db:push": "drizzle-kit push"
   },

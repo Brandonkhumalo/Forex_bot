@@ -6,23 +6,22 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 ## Project Structure
 
 ```
-├── frontend/        # React frontend (TypeScript + Tailwind)
+├── src/             # React frontend (TypeScript + Tailwind)
 ├── backend/         # Django REST Framework backend (Python)
-├── server/          # Minimal dev startup script
-├── client -> frontend  # Symlink for Vite compatibility
+├── index.html       # Frontend entry point
 └── attached_assets/ # Static assets
 ```
 
 ## Architecture
 
 ### Frontend (React + TypeScript + Tailwind)
-- **Location**: `frontend/src/`
+- **Location**: `src/`
 - **Framework**: React 18 with Vite
 - **Styling**: Tailwind CSS with shadcn/ui components
 - **Routing**: wouter
 - **State Management**: TanStack Query for server state
 - **Charts**: Recharts for visualizations
-- **API**: Direct calls to Django via CORS (configurable via VITE_API_BASE_URL)
+- **Port**: 5000 (Vite dev server with proxy to Django)
 
 ### Backend (Django + Django REST Framework)
 - **Location**: `backend/`
@@ -31,11 +30,6 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 - **Database**: PostgreSQL (via DATABASE_URL)
 - **ML**: scikit-learn for trading predictions
 - **Port**: 8000
-
-### Development Startup
-- **Location**: `server/index-dev.ts`
-- **Purpose**: Starts both Django (port 8000) and Vite (port 5000)
-- Runs database migrations automatically on startup
 
 ## Key Files
 
@@ -48,11 +42,11 @@ A comprehensive ML-based trading AI engine using Capital.com API with Python/Dja
 - `backend/api/trading_engine.py` - Autonomous trading logic
 
 ### Frontend
-- `frontend/src/pages/dashboard.tsx` - Main trading dashboard with AI controls
-- `frontend/src/pages/analytics.tsx` - Performance analytics and ML metrics
-- `frontend/src/pages/login.tsx` - User authentication
-- `frontend/src/components/app-sidebar.tsx` - Navigation sidebar
-- `frontend/src/lib/queryClient.ts` - API client with JWT auth
+- `src/pages/dashboard.tsx` - Main trading dashboard with AI controls
+- `src/pages/analytics.tsx` - Performance analytics and ML metrics
+- `src/pages/login.tsx` - User authentication
+- `src/components/app-sidebar.tsx` - Navigation sidebar
+- `src/lib/queryClient.ts` - API client with JWT auth
 
 ## Running the Application
 
@@ -64,6 +58,11 @@ This starts both Django backend (port 8000) and Vite frontend (port 5000).
 ### Start Backend Only
 ```bash
 cd backend && python manage.py runserver 0.0.0.0:8000
+```
+
+### Start Frontend Only
+```bash
+npm run dev:frontend
 ```
 
 ### Database Migrations
@@ -95,7 +94,6 @@ cd backend && python manage.py migrate
 - `CAPITAL_COM_API_KEY` - Capital.com API key
 - `CAPITAL_COM_PASSWORD` - Capital.com password
 - `CAPITAL_COM_IDENTIFIER` - Capital.com account identifier
-- `VITE_API_BASE_URL` - Frontend API base URL (defaults to http://localhost:8000)
 
 ## ML Trading Logic
 
@@ -121,17 +119,17 @@ cd backend && python manage.py migrate
 - Gold: 15% of capital
 - Risk per trade: 2% of available capital
 
-## Recent Changes (November 2025)
-- Restructured project: frontend/ (React) + backend/ (Django)
-- Direct Django API calls via CORS (no Express proxy needed)
-- Simplified server folder to minimal startup script
-- JWT authentication with localStorage token storage
-- Database migrations run automatically on startup
+## Separating Frontend and Backend
 
-## API Status Endpoint
-- `GET /api/status/` - Check if Capital.com credentials are configured
-- Returns: `{api_configured, api_connected, account_info, missing_credentials}`
-- AI toggle is disabled until credentials are provided
+To split this project into separate repositories:
+
+**Frontend repo:**
+1. Copy: `src/`, `index.html`, `vite.config.ts`, `tailwind.config.ts`, `tsconfig.json`, `package.json`
+2. Update `vite.config.ts` proxy target to point to your backend URL
+
+**Backend repo:**
+1. Copy: `backend/` folder
+2. Add CORS settings for your frontend domain
 
 ## Design Guidelines
 - Professional trading platform aesthetic
