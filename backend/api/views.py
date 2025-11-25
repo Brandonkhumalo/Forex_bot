@@ -315,9 +315,38 @@ def toggle_ai(request):
                 'ai_enabled': False
             }, status=status.HTTP_400_BAD_REQUEST)
     
+    was_enabled = settings.ai_enabled
     settings.ai_enabled = not settings.ai_enabled
     settings.last_ai_toggle = timezone.now()
     settings.save()
+    
+    closed_positions = 0
+    total_pnl = Decimal('0')
+    if was_enabled and not settings.ai_enabled:
+        authenticated = api.authenticate()
+        positions_map = {}
+        if authenticated:
+            positions = api.get_open_positions()
+            if positions:
+                positions_map = {p['dealId']: p for p in positions}
+        
+        open_trades = Trade.objects.filter(user=request.user, status='open')
+        for trade in open_trades:
+            current_price = trade.entry_price
+            
+            if trade.capital_api_deal_id and trade.capital_api_deal_id in positions_map:
+                pos = positions_map[trade.capital_api_deal_id]
+                current_price = Decimal(str(pos.get('currentLevel', trade.entry_price)))
+            
+            if trade.capital_api_deal_id and authenticated:
+                api.close_position(trade.capital_api_deal_id)
+            
+            trade.close_trade(current_price)
+            total_pnl += trade.profit_loss
+            closed_positions += 1
+        
+        settings.current_capital += total_pnl
+        settings.save()
     
     if settings.ai_enabled:
         TradingSession.objects.filter(user=request.user, is_active=True).update(
@@ -329,9 +358,16 @@ def toggle_ai(request):
             is_active=False, ended_at=timezone.now()
         )
     
+    message = 'AI trading started' if settings.ai_enabled else 'AI trading stopped'
+    if closed_positions > 0:
+        message += f' - Closed {closed_positions} open position(s)'
+    
     return Response({
         'ai_enabled': settings.ai_enabled,
-        'message': 'AI trading started' if settings.ai_enabled else 'AI trading stopped'
+        'message': message,
+        'closed_positions': closed_positions,
+        'closed': closed_positions,
+        'total_pnl': float(total_pnl)
     })
 
 
@@ -374,6 +410,154 @@ def get_trade_detail(request, trade_id):
             {'error': 'Trade not found'},
             status=status.HTTP_404_NOT_FOUND
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def close_position(request, trade_id):
+    try:
+        trade = Trade.objects.get(id=trade_id, user=request.user, status='open')
+    except Trade.DoesNotExist:
+        return Response(
+            {'error': 'Trade not found or already closed', 'closed': 0, 'total_pnl': 0},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    api = CapitalComAPI()
+    current_price = trade.entry_price
+    authenticated = api.authenticate()
+    
+    if trade.capital_api_deal_id and authenticated:
+        positions = api.get_open_positions()
+        if positions:
+            for pos in positions:
+                if pos.get('dealId') == trade.capital_api_deal_id:
+                    current_price = Decimal(str(pos.get('currentLevel', trade.entry_price)))
+                    break
+        api.close_position(trade.capital_api_deal_id)
+    
+    trade.close_trade(current_price)
+    
+    settings = TradingSettings.objects.get_or_create(user=request.user)[0]
+    settings.current_capital += trade.profit_loss
+    settings.save()
+    
+    return Response({
+        'message': 'Position closed successfully',
+        'trade_id': trade.id,
+        'pair': trade.pair,
+        'profit_loss': float(trade.profit_loss),
+        'outcome': trade.outcome,
+        'closed': 1,
+        'total_pnl': float(trade.profit_loss)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def close_all_profitable(request):
+    open_trades = list(Trade.objects.filter(user=request.user, status='open'))
+    
+    api = CapitalComAPI()
+    authenticated = api.authenticate()
+    
+    positions_map = {}
+    if authenticated:
+        positions = api.get_open_positions()
+        if positions:
+            positions_map = {p['dealId']: p for p in positions}
+    
+    for trade in open_trades:
+        if trade.capital_api_deal_id and trade.capital_api_deal_id in positions_map:
+            pos = positions_map[trade.capital_api_deal_id]
+            trade.current_price = Decimal(str(pos.get('currentLevel', trade.entry_price)))
+            trade.profit_loss = Decimal(str(pos.get('profitLoss', 0)))
+            trade.save()
+    
+    profitable_trades = [t for t in open_trades if t.profit_loss and t.profit_loss > 0]
+    
+    if not profitable_trades:
+        return Response({
+            'message': 'No profitable trades to close',
+            'closed': 0,
+            'total_profit': 0,
+            'total_pnl': 0
+        })
+    
+    closed_count = 0
+    total_profit = Decimal('0')
+    
+    for trade in profitable_trades:
+        current_price = trade.current_price or trade.entry_price
+        
+        if trade.capital_api_deal_id and authenticated:
+            api.close_position(trade.capital_api_deal_id)
+        
+        trade.close_trade(current_price)
+        total_profit += trade.profit_loss
+        closed_count += 1
+    
+    settings = TradingSettings.objects.get_or_create(user=request.user)[0]
+    settings.current_capital += total_profit
+    settings.save()
+    
+    return Response({
+        'message': f'Successfully closed {closed_count} profitable trade(s)',
+        'closed': closed_count,
+        'total_profit': float(total_profit),
+        'total_pnl': float(total_profit)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def close_all_positions(request):
+    open_trades = list(Trade.objects.filter(user=request.user, status='open'))
+    
+    if not open_trades:
+        return Response({
+            'message': 'No open positions to close',
+            'closed': 0,
+            'total_pnl': 0,
+            'total_profit': 0
+        })
+    
+    api = CapitalComAPI()
+    authenticated = api.authenticate()
+    
+    positions_map = {}
+    if authenticated:
+        positions = api.get_open_positions()
+        if positions:
+            positions_map = {p['dealId']: p for p in positions}
+    
+    closed_count = 0
+    total_pnl = Decimal('0')
+    
+    for trade in open_trades:
+        current_price = trade.entry_price
+        
+        if trade.capital_api_deal_id and trade.capital_api_deal_id in positions_map:
+            pos = positions_map[trade.capital_api_deal_id]
+            current_price = Decimal(str(pos.get('currentLevel', trade.entry_price)))
+        
+        if trade.capital_api_deal_id and authenticated:
+            api.close_position(trade.capital_api_deal_id)
+        
+        trade.close_trade(current_price)
+        total_pnl += trade.profit_loss
+        closed_count += 1
+    
+    settings = TradingSettings.objects.get_or_create(user=request.user)[0]
+    settings.current_capital += total_pnl
+    settings.save()
+    
+    return Response({
+        'message': f'Successfully closed {closed_count} position(s)',
+        'closed': closed_count,
+        'total_pnl': float(total_pnl),
+        'total_profit': float(total_pnl)
+    })
 
 
 @api_view(['GET'])

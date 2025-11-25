@@ -20,6 +20,9 @@ urlpatterns = [
     path('trades/open/', views.get_open_trades, name='open_trades'),
     path('trades/history/', views.get_trade_history, name='trade_history'),
     path('trades/<int:trade_id>/', views.get_trade_detail, name='trade_detail'),
+    path('trades/<int:trade_id>/close/', views.close_position, name='close_position'),
+    path('trades/close-profitable/', views.close_all_profitable, name='close_profitable'),
+    path('trades/close-all/', views.close_all_positions, name='close_all'),
     
     path('market/prices/', views.get_market_prices, name='market_prices'),
     path('market/data/<str:pair>/<str:timeframe>/', views.get_market_data, name='market_data'),

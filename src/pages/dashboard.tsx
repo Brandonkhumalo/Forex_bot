@@ -2,7 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { 
   DollarSign, TrendingUp, TrendingDown, Activity, 
   Power, Brain, Clock, Target, AlertCircle, Loader2,
-  Wifi, WifiOff, AlertTriangle
+  Wifi, WifiOff, AlertTriangle, X, CheckCircle, XCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -168,6 +168,7 @@ export default function Dashboard() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/'] });
       queryClient.invalidateQueries({ queryKey: ['/api/status/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/open/'] });
       toast({
         title: data.ai_enabled ? 'AI Trading Started' : 'AI Trading Stopped',
         description: data.message,
@@ -176,6 +177,88 @@ export default function Dashboard() {
     onError: (error: Error) => {
       toast({
         title: 'Cannot Start AI Trading',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const closePositionMutation = useMutation({
+    mutationFn: async (tradeId: number) => {
+      const res = await authFetch(`/api/trades/${tradeId}/close/`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to close position');
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/open/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/history/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/'] });
+      toast({
+        title: 'Position Closed',
+        description: `${data.pair}: ${formatCurrency(data.profit_loss)} (${data.outcome})`,
+        variant: data.profit_loss >= 0 ? 'default' : 'destructive',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to Close Position',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const closeProfitableMutation = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch('/api/trades/close-profitable/', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to close profitable trades');
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/open/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/history/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/'] });
+      toast({
+        title: 'Profitable Trades Closed',
+        description: `Closed ${data.closed} trades for ${formatCurrency(data.total_profit)} profit`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to Close Profitable Trades',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const closeAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch('/api/trades/close-all/', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to close all positions');
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/open/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/history/'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/'] });
+      toast({
+        title: 'All Positions Closed',
+        description: `Closed ${data.closed} positions. Net P/L: ${formatCurrency(data.total_pnl)}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to Close Positions',
         description: error.message,
         variant: 'destructive',
       });
@@ -352,14 +435,48 @@ export default function Dashboard() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              Active Trades
-            </CardTitle>
-            <CardDescription>
-              Currently open positions
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Active Trades
+              </CardTitle>
+              <CardDescription>
+                Currently open positions
+              </CardDescription>
+            </div>
+            {openTrades && openTrades.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => closeProfitableMutation.mutate()}
+                  disabled={closeProfitableMutation.isPending || !openTrades.some(t => t.profit_loss > 0)}
+                  data-testid="button-take-profit"
+                >
+                  {closeProfitableMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                  )}
+                  Take Profit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => closeAllMutation.mutate()}
+                  disabled={closeAllMutation.isPending}
+                  data-testid="button-close-all"
+                >
+                  {closeAllMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <XCircle className="h-4 w-4 mr-1" />
+                  )}
+                  Close All
+                </Button>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {tradesLoading ? (
@@ -377,6 +494,7 @@ export default function Dashboard() {
                     <TableHead className="text-right">Entry</TableHead>
                     <TableHead className="text-right">Current</TableHead>
                     <TableHead className="text-right">P/L</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -398,6 +516,17 @@ export default function Dashboard() {
                         trade.profit_loss >= 0 ? 'text-success' : 'text-destructive'
                       }`}>
                         {formatCurrency(trade.profit_loss)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => closePositionMutation.mutate(trade.id)}
+                          disabled={closePositionMutation.isPending}
+                          data-testid={`button-close-trade-${trade.id}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

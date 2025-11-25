@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import pickle
 import logging
+import os
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
@@ -13,12 +15,71 @@ from .models import Trade, MLModel, MarketData
 
 logger = logging.getLogger(__name__)
 
+AI_LOGS_DIR = Path(__file__).resolve().parent.parent / 'ai_logs'
+
+
+class AILogger:
+    def __init__(self, user_email: str):
+        self.user_email = user_email.replace('@', '_at_').replace('.', '_')
+        self.user_dir = AI_LOGS_DIR / self.user_email
+        self.user_dir.mkdir(parents=True, exist_ok=True)
+    
+    def get_log_file(self) -> Path:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        return self.user_dir / f'ml_training_{date_str}.log'
+    
+    def log(self, message: str, level: str = 'INFO'):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_line = f"[{timestamp}] [{level}] {message}\n"
+        
+        with open(self.get_log_file(), 'a') as f:
+            f.write(log_line)
+        
+        if level == 'ERROR':
+            logger.error(message)
+        elif level == 'WARNING':
+            logger.warning(message)
+        else:
+            logger.info(message)
+    
+    def log_training_start(self, num_trades: int):
+        self.log(f"=" * 60)
+        self.log(f"ML MODEL TRAINING STARTED")
+        self.log(f"User: {self.user_email}")
+        self.log(f"Total trades for training: {num_trades}")
+        self.log(f"=" * 60)
+    
+    def log_training_complete(self, metrics: Dict):
+        self.log(f"TRAINING COMPLETE - Model v{metrics.get('version', 'N/A')}")
+        self.log(f"  Accuracy: {metrics.get('accuracy', 0):.2%}")
+        self.log(f"  Precision: {metrics.get('precision', 0):.2%}")
+        self.log(f"  Recall: {metrics.get('recall', 0):.2%}")
+        self.log(f"  F1 Score: {metrics.get('f1_score', 0):.2%}")
+        self.log(f"  Cross-validation Mean: {metrics.get('cv_mean', 0):.2%}")
+        self.log(f"-" * 40)
+        self.log(f"TOP FEATURE IMPORTANCE:")
+        importance = metrics.get('feature_importance', {})
+        sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)
+        for feature, imp in sorted_features[:5]:
+            self.log(f"  {feature}: {imp:.4f}")
+        self.log(f"=" * 60)
+    
+    def log_prediction(self, pair: str, prediction: float, confidence: float, ta_signal: float):
+        self.log(f"PREDICTION: {pair} | ML={prediction:.2f} ({confidence:.1%}) | TA={ta_signal}")
+    
+    def log_retrain_trigger(self, trades_since: int):
+        self.log(f"RETRAIN TRIGGERED: {trades_since} new trades since last training")
+    
+    def log_error(self, error_message: str):
+        self.log(f"ERROR: {error_message}", level='ERROR')
+
 
 class MLTradingEngine:
     def __init__(self, user):
         self.user = user
         self.model = None
         self.scaler = StandardScaler()
+        self.ai_logger = AILogger(user.email)
         self.feature_columns = [
             'rsi', 'macd', 'macd_signal', 'macd_histogram',
             'sma_20', 'sma_50', 'sma_ratio',
@@ -79,10 +140,12 @@ class MLTradingEngine:
             logger.info(f"Not enough trades to train. Have {len(trades)}, need {min_trades}")
             return None
         
+        self.ai_logger.log_training_start(len(trades))
+        
         X, y = self.prepare_features(trades)
         
         if len(X) == 0:
-            logger.error("No valid features extracted from trades")
+            self.ai_logger.log_error("No valid features extracted from trades")
             return None
         
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
@@ -149,16 +212,20 @@ class MLTradingEngine:
             is_active=True,
         )
         
-        logger.info(f"Trained ML model v{latest_version} with accuracy {accuracy:.2%}")
-        
-        return {
+        metrics = {
             'version': latest_version,
             'accuracy': accuracy,
             'precision': precision,
             'recall': recall,
             'f1_score': f1,
+            'cv_mean': float(cv_scores.mean()),
             'feature_importance': feature_importance,
         }
+        
+        self.ai_logger.log_training_complete(metrics)
+        logger.info(f"Trained ML model v{latest_version} with accuracy {accuracy:.2%}")
+        
+        return metrics
     
     def load_model(self) -> bool:
         ml_model = MLModel.objects.filter(user=self.user, is_active=True).first()
@@ -218,15 +285,20 @@ class MLTradingEngine:
         current_trades = Trade.objects.filter(user=self.user, status='closed').count()
         trades_since_training = current_trades - ml_model.trades_trained_on
         
-        return trades_since_training >= 10
+        if trades_since_training >= 10:
+            self.ai_logger.log_retrain_trigger(trades_since_training)
+            return True
+        return False
     
-    def get_combined_signal(self, technical_signal: Dict, indicators: Dict) -> Dict:
+    def get_combined_signal(self, technical_signal: Dict, indicators: Dict, pair: str = 'UNKNOWN') -> Dict:
         ml_prediction, ml_confidence = self.predict(indicators, technical_signal)
         
         ta_signal = technical_signal.get('signal', 0)
         ta_confidence = technical_signal.get('confidence', 0.5)
         
         ml_signal = 1 if ml_prediction >= 0.5 else -1
+        
+        self.ai_logger.log_prediction(pair, ml_prediction, ml_confidence, ta_signal)
         
         if ml_signal == ta_signal:
             combined_confidence = (ml_confidence + ta_confidence) / 2
