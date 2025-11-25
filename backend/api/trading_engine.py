@@ -383,9 +383,27 @@ class TradingEngine:
         trade_decision['reasons'] = reasons
         
         if entry_result and should_trade:
-            trade_decision['entry_price'] = entry_result.entry_price
-            trade_decision['stop_loss'] = entry_result.stop_loss
-            trade_decision['take_profit'] = entry_result.take_profit
+            entry_price = entry_result.entry_price
+            stop_loss = entry_result.stop_loss
+            take_profit = entry_result.take_profit
+            
+            # XAU/USD (Gold) special SL/TP: fixed $10 distance, rounded to nearest 10
+            if pair == 'XAU/USD':
+                # Round entry to nearest 10
+                rounded_entry = round(entry_price / 10) * 10
+                if trade_decision['direction'] == 'buy':
+                    # BUY: SL = rounded - 10, TP = rounded + 10
+                    stop_loss = rounded_entry - 10
+                    take_profit = rounded_entry + 10
+                else:
+                    # SELL: SL = rounded + 10, TP = rounded - 10
+                    stop_loss = rounded_entry + 10
+                    take_profit = rounded_entry - 10
+                logger.info(f"  {pair} XAU/USD SL/TP: entry={entry_price:.2f}, rounded={rounded_entry:.0f}, SL={stop_loss:.0f}, TP={take_profit:.0f}")
+            
+            trade_decision['entry_price'] = entry_price
+            trade_decision['stop_loss'] = stop_loss
+            trade_decision['take_profit'] = take_profit
         
         return {**analysis, 'trade_decision': trade_decision}
     
