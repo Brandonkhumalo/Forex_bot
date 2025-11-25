@@ -401,6 +401,20 @@ class TradingEngine:
                     take_profit = rounded_entry - 10
                 logger.info(f"  {pair} XAU/USD SL/TP: entry={entry_price:.2f}, rounded={rounded_entry:.0f}, SL={stop_loss:.0f}, TP={take_profit:.0f}")
             
+            # USD/JPY special SL/TP: SL = 1.5 pips, TP = 2.0 pips from rounded entry
+            elif pair == 'USD/JPY':
+                # Round entry to nearest whole number
+                rounded_entry = round(entry_price)
+                if trade_decision['direction'] == 'buy':
+                    # BUY: SL = rounded - 1.5, TP = rounded + 2
+                    stop_loss = rounded_entry - 1.5
+                    take_profit = rounded_entry + 2
+                else:
+                    # SELL: SL = rounded + 1.5, TP = rounded - 2
+                    stop_loss = rounded_entry + 1.5
+                    take_profit = rounded_entry - 2
+                logger.info(f"  {pair} USD/JPY SL/TP: entry={entry_price:.5f}, rounded={rounded_entry:.0f}, SL={stop_loss:.2f}, TP={take_profit:.2f}")
+            
             trade_decision['entry_price'] = entry_price
             trade_decision['stop_loss'] = stop_loss
             trade_decision['take_profit'] = take_profit
