@@ -50,6 +50,7 @@ class CapitalComAPI:
             payload = {
                 'identifier': self.identifier,
                 'password': self.password,
+                'encryptedPassword': False,
             }
             
             response = self.session.post(

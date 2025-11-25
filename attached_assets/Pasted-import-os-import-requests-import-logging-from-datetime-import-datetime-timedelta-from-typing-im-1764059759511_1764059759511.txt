@@ -1,0 +1,92 @@
+import os
+import requests
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Optional, NamedTuple
+import threading
+import random
+
+class SessionData(NamedTuple):
+    """Holds session authentication data for Capital.com API"""
+    cst_token: str
+    security_token: str
+    expires_at: datetime
+    http_session: requests.Session
+    last_auth_fail_at: Optional[datetime] = None
+    backoff_seconds: float = 0.0
+
+
+class CapitalSessionManager:
+    """
+    Per-process singleton session manager for Capital.com API
+    Manages session tokens, expiry, and connection pooling
+    """
+    
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if self._initialized:
+            return
+        self._sessions: Dict[str, SessionData] = {}
+        self._session_locks: Dict[str, threading.Lock] = {}
+        self._global_lock = threading.Lock()
+        self._initialized = True
+
+    def ensure_session(self, identifier: str, password: str, api_key: str, 
+                      base_url: str, use_demo: bool) -> bool:
+        """Create/renew session with Capital.com"""
+        key = f"{identifier}:{use_demo}"
+        
+        # Fast path: session valid and not expiring soon
+        if key in self._sessions:
+            session_data = self._sessions[key]
+            time_until_expiry = (session_data.expires_at - datetime.now()).total_seconds()
+            if time_until_expiry > 120:  # More than 2 minutes remaining
+                return True
+        
+        # Create new session
+        try:
+            http_session = requests.Session()
+            
+            url = f'{base_url}/api/v1/session'
+            headers = {
+                'X-CAP-API-KEY': api_key,
+                'Content-Type': 'application/json',
+            }
+            payload = {
+                'identifier': identifier,
+                'password': password,
+                'encryptedPassword': False
+            }
+            
+            response = http_session.post(url, json=payload, headers=headers)
+            
+            if response.status_code == 200:
+                cst_token = response.headers.get('CST')
+                security_token = response.headers.get('X-SECURITY-TOKEN')
+                
+                if not cst_token or not security_token:
+                    return False
+                
+                expires_at = datetime.now() + timedelta(minutes=10)
+                
+                self._sessions[key] = SessionData(
+                    cst_token=cst_token,
+                    security_token=security_token,
+                    expires_at=expires_at,
+                    http_session=http_session
+                )
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Session creation failed: {e}")
+            return False

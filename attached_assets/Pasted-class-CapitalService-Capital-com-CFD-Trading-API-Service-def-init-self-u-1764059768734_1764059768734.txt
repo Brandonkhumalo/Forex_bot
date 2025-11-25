@@ -1,0 +1,79 @@
+class CapitalService:
+    """Capital.com CFD Trading API Service"""
+    
+    def __init__(self, use_demo=True):
+        self.api_key = os.getenv('CAPITAL_API_KEY')
+        self.identifier = os.getenv('CAPITAL_IDENTIFIER')
+        self.password = os.getenv('CAPITAL_PASSWORD')
+        self.use_demo = use_demo
+        
+        # Choose base URL
+        if use_demo:
+            self.base_url = 'https://demo-api-capital.backend-capital.com'
+        else:
+            self.base_url = 'https://api-capital.backend-capital.com'
+        
+        self._session_manager = CapitalSessionManager()
+    
+    def create_session(self):
+        """Create authenticated session"""
+        return self._session_manager.ensure_session(
+            identifier=self.identifier,
+            password=self.password,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            use_demo=self.use_demo
+        )
+    
+    def get_account_details(self):
+        """Get account balance and equity"""
+        headers = {
+            'CST': self._session_manager._sessions[f"{self.identifier}:{self.use_demo}"].cst_token,
+            'X-SECURITY-TOKEN': self._session_manager._sessions[f"{self.identifier}:{self.use_demo}"].security_token,
+            'Content-Type': 'application/json',
+        }
+        
+        response = requests.get(
+            f'{self.base_url}/api/v1/accounts',
+            headers=headers
+        )
+        return response.json()
+    
+    def get_positions(self):
+        """Get all open positions"""
+        # Similar pattern with authenticated headers
+        pass
+    
+    def create_position(self, epic: str, direction: str, size: float, 
+                       stop_level: float = None, profit_level: float = None):
+        """Open a new CFD position"""
+        payload = {
+            'epic': epic,
+            'direction': direction.upper(),  # 'BUY' or 'SELL'
+            'size': size,
+            'guaranteedStop': False,
+            'stopLevel': stop_level,
+            'profitLevel': profit_level
+        }
+        
+        response = requests.post(
+            f'{self.base_url}/api/v1/positions',
+            headers=self._get_authenticated_headers(),
+            json=payload
+        )
+        
+        if response.status_code == 200:
+            # CRITICAL: Get actual position ID from deal confirmation
+            deal_ref = response.json().get('dealReference')
+            confirmation = self.get_deal_confirmation(deal_ref)
+            actual_position_id = confirmation['affectedDeals'][0]['dealId']
+            return actual_position_id
+        return None
+    
+    def close_position(self, deal_id: str):
+        """Close an open position"""
+        response = requests.delete(
+            f'{self.base_url}/api/v1/positions/{deal_id}',
+            headers=self._get_authenticated_headers()
+        )
+        return response.status_code == 200
