@@ -128,6 +128,10 @@ class TradingEngine:
         - 1H: Key support/resistance levels
         - 15m + 30m: Entry signals
         """
+        logger.info(f"Analyzing {pair} - Available timeframes: {list(data_dict.keys())}")
+        for tf, df in data_dict.items():
+            logger.info(f"  {tf}: {len(df)} candles")
+        
         analysis = analyze_multi_timeframe(data_dict)
         
         trade_decision = {
@@ -148,13 +152,23 @@ class TradingEngine:
         entry_signal = analysis.get('entry_signal', Signal.NEUTRAL)
         entry_result = analysis.get('entry_result')
         aligned = analysis.get('aligned', False)
+        confidence = analysis.get('confidence', 0)
+        
+        logger.info(f"  {pair} Analysis: trend={trend.name if hasattr(trend, 'name') else trend}, entry={entry_signal.name if hasattr(entry_signal, 'name') else entry_signal}, aligned={aligned}, confidence={confidence:.2f}")
+        
+        if trend == Signal.NEUTRAL:
+            aligned = True
+            logger.info(f"  {pair}: Trend is neutral, allowing entry signal to drive decision")
         
         if not aligned:
             trade_decision['reasons'].append('Timeframes not aligned')
+            logger.info(f"  {pair}: Skipping - timeframes not aligned")
             return {**analysis, 'trade_decision': trade_decision}
         
-        if analysis.get('confidence', 0) < 0.4:
-            trade_decision['reasons'].append('Confidence too low')
+        min_confidence = 0.25
+        if confidence < min_confidence:
+            trade_decision['reasons'].append(f'Confidence {confidence:.2f} < {min_confidence}')
+            logger.info(f"  {pair}: Skipping - confidence too low ({confidence:.2f} < {min_confidence})")
             return {**analysis, 'trade_decision': trade_decision}
         
         smc_strategies = []
@@ -229,6 +243,8 @@ class TradingEngine:
         strategies_used = []
         reasons = []
         
+        logger.info(f"  {pair} Strategies: SMC={smc_strategies}, PA={price_action_strategies}, TF={trend_following_strategies}, RB={range_bound_strategies}")
+        
         if smc_strategies:
             should_trade = True
             strategy_category = 'SMC'
@@ -258,6 +274,24 @@ class TradingEngine:
             strategy_category = 'Mixed'
             strategies_used = trend_following_strategies + range_bound_strategies
             reasons.append(f"Mixed strategies aligned: {trend_following_strategies[0]} + {range_bound_strategies[0]}")
+        
+        elif len(trend_following_strategies) >= 1 and entry_signal in [Signal.BUY, Signal.STRONG_BUY, Signal.SELL, Signal.STRONG_SELL]:
+            should_trade = True
+            strategy_category = 'Trend-Following-Single'
+            strategies_used = trend_following_strategies
+            reasons.append(f"Single trend-following with strong signal: {trend_following_strategies[0]}")
+        
+        elif len(range_bound_strategies) >= 1 and entry_signal in [Signal.BUY, Signal.STRONG_BUY, Signal.SELL, Signal.STRONG_SELL]:
+            should_trade = True
+            strategy_category = 'Range-Bound-Single'
+            strategies_used = range_bound_strategies
+            reasons.append(f"Single range-bound with strong signal: {range_bound_strategies[0]}")
+        
+        elif entry_signal in [Signal.BUY, Signal.STRONG_BUY, Signal.SELL, Signal.STRONG_SELL] and confidence >= 0.3:
+            should_trade = True
+            strategy_category = 'Signal-Confidence'
+            strategies_used = ['high_confidence_signal']
+            reasons.append(f"Strong {entry_signal.name} signal with confidence {confidence:.2f}")
         
         else:
             if trend_following_strategies:
@@ -362,19 +396,23 @@ class TradingEngine:
     
     def should_trade(self, analysis: Dict, pair: str) -> bool:
         if not analysis:
+            logger.info(f"  {pair}: No analysis available")
             return False
         
         trade_decision = analysis.get('trade_decision', {})
         if not trade_decision.get('should_trade', False):
+            logger.info(f"  {pair}: trade_decision.should_trade is False - reasons: {trade_decision.get('reasons', [])}")
             return False
         
         available = self.get_available_capital(pair)
         if available <= 0:
-            logger.info(f"No available capital for {pair}")
+            logger.info(f"  {pair}: No available capital")
             return False
         
         confidence = trade_decision.get('confidence', 0)
-        if confidence < 0.5:
+        min_trade_confidence = 0.20
+        if confidence < min_trade_confidence:
+            logger.info(f"  {pair}: Confidence {confidence:.2f} < {min_trade_confidence}")
             return False
         
         open_trades = Trade.objects.filter(
@@ -384,8 +422,10 @@ class TradingEngine:
         ).count()
         
         if open_trades >= 2:
+            logger.info(f"  {pair}: Already has {open_trades} open trades")
             return False
         
+        logger.info(f"  {pair}: TRADE APPROVED - confidence={confidence:.2f}, direction={trade_decision.get('direction')}")
         return True
     
     def execute_trade(self, pair: str, analysis: Dict) -> Optional[Trade]:
@@ -405,6 +445,7 @@ class TradingEngine:
             return None
         
         result = None
+        deal_id = ''
         if self.authenticated:
             result = self.api.open_position(
                 pair=pair,
@@ -413,6 +454,11 @@ class TradingEngine:
                 stop_loss=stop_loss,
                 take_profit=take_profit
             )
+            if result and result.get('dealId'):
+                deal_id = str(result.get('dealId'))
+                logger.info(f"  {pair}: API returned deal_id={deal_id}")
+            else:
+                logger.warning(f"  {pair}: API call failed or no deal_id returned")
         
         strategies_used = trade_decision.get('strategies_used', [])
         strategy_str = ' + '.join(strategies_used[:3]) if strategies_used else 'Technical'
@@ -446,7 +492,7 @@ class TradingEngine:
                 'mode': 'bootstrap' if self.is_bootstrap_mode() else 'ml',
                 'reasons': trade_decision.get('reasons', []),
             },
-            capital_api_deal_id=result.get('dealId', '') if result else '',
+            capital_api_deal_id=deal_id,
         )
         
         session = TradingSession.objects.filter(user=self.user, is_active=True).first()
@@ -522,7 +568,7 @@ class TradingEngine:
     
     def run_trading_cycle(self):
         if not self.settings.ai_enabled:
-            return
+            return {'status': 'disabled', 'trades_executed': 0}
         
         if not self.authenticated:
             self.initialize()
@@ -534,13 +580,37 @@ class TradingEngine:
         trade_count = self.get_trade_count()
         logger.info(f"Running trading cycle in {mode} mode ({trade_count}/{self.BOOTSTRAP_TRADE_THRESHOLD} trades)")
         
+        trades_executed = 0
+        pairs_analyzed = []
+        signals_found = []
+        
         for pair in self.TRADING_PAIRS:
             try:
                 analysis = self.analyze_pair(pair)
+                pairs_analyzed.append(pair)
+                
+                if analysis and analysis.get('signal') != 'HOLD':
+                    signals_found.append({
+                        'pair': pair,
+                        'signal': analysis.get('signal'),
+                        'confidence': analysis.get('confidence', 0)
+                    })
                 
                 if self.should_trade(analysis, pair):
-                    self.execute_trade(pair, analysis)
+                    result = self.execute_trade(pair, analysis)
+                    if result:
+                        trades_executed += 1
+                        logger.info(f"Trade executed for {pair}: {analysis.get('signal')}")
                 
             except Exception as e:
                 logger.error(f"Error analyzing {pair}: {str(e)}")
                 continue
+        
+        return {
+            'status': 'completed',
+            'mode': mode,
+            'trade_count': trade_count,
+            'pairs_analyzed': len(pairs_analyzed),
+            'trades_executed': trades_executed,
+            'signals_found': signals_found
+        }

@@ -60,8 +60,11 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-function formatNumber(value: number, decimals = 2): string {
-  return value.toFixed(decimals);
+function formatNumber(value: number | string | null | undefined, decimals = 2): string {
+  if (value === null || value === undefined) return '0.00';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return '0.00';
+  return num.toFixed(decimals);
 }
 
 function StatCard({ 

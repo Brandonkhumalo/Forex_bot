@@ -33,4 +33,5 @@ urlpatterns = [
     path('events/', views.get_economic_events, name='economic_events'),
     
     path('account/', views.get_account_info, name='account_info'),
+    path('trading/run-cycle/', views.run_trading_cycle, name='run_trading_cycle'),
 ]

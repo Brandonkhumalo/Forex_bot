@@ -21,6 +21,7 @@ from .serializers import (
     AnalyticsSerializer
 )
 from .capital_api import CapitalComAPI
+from .trading_engine import TradingEngine
 
 
 @api_view(['POST'])
@@ -668,3 +669,39 @@ def get_account_info(request):
         'deposit': float(settings.initial_capital),
         'profitLoss': float(settings.current_capital - settings.initial_capital),
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def run_trading_cycle(request):
+    settings = TradingSettings.objects.get_or_create(user=request.user)[0]
+    
+    if not settings.ai_enabled:
+        return Response({
+            'success': False,
+            'message': 'AI trading is not enabled. Turn on AI first.',
+            'trades_executed': 0
+        })
+    
+    try:
+        engine = TradingEngine(request.user)
+        if not engine.initialize():
+            return Response({
+                'success': False,
+                'message': 'Failed to connect to Capital.com API',
+                'trades_executed': 0
+            })
+        
+        result = engine.run_trading_cycle()
+        
+        return Response({
+            'success': True,
+            'message': 'Trading cycle completed',
+            'result': result
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error running trading cycle: {str(e)}',
+            'trades_executed': 0
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
