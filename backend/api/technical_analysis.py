@@ -638,77 +638,58 @@ class TechnicalAnalysis:
     
     def rsi_trend_signal(self) -> Signal:
         """
-        Trend-Following: RSI + Trend
-        In uptrend: Use RSI dips (30-40) to buy
-        In downtrend: Use RSI peaks (60-70) to sell
-        """
-        df = self.data
-        current = df.iloc[-1]
-        trend, _ = self.identify_trend()
-        rsi = current['RSI']
-        
-        if trend == 'uptrend':
-            if 30 <= rsi <= 40:
-                return Signal.STRONG_BUY
-            elif rsi < 30:
-                return Signal.BUY
-            elif rsi > 70:
-                return Signal.NEUTRAL
-        elif trend == 'downtrend':
-            if 60 <= rsi <= 70:
-                return Signal.STRONG_SELL
-            elif rsi > 70:
-                return Signal.SELL
-            elif rsi < 30:
-                return Signal.NEUTRAL
-        else:
-            if rsi < 30:
-                return Signal.BUY
-            elif rsi > 70:
-                return Signal.SELL
-        
-        return Signal.NEUTRAL
-    
-    def bollinger_bounce_signal(self) -> Signal:
-        """
-        Range-Bound: Bollinger Band Bounce
-        Lower band: buy
-        Upper band: sell
-        """
-        df = self.data
-        current = df.iloc[-1]
-        prev = df.iloc[-2]
-        
-        if prev['close'] < prev['BB_lower'] and current['close'] > current['BB_lower']:
-            return Signal.STRONG_BUY
-        elif current['close'] <= current['BB_lower']:
-            return Signal.BUY
-        
-        if prev['close'] > prev['BB_upper'] and current['close'] < current['BB_upper']:
-            return Signal.STRONG_SELL
-        elif current['close'] >= current['BB_upper']:
-            return Signal.SELL
-        
-        return Signal.NEUTRAL
-    
-    def rsi_range_signal(self) -> Signal:
-        """
-        Range-Bound: RSI Range Trading
-        Buy at RSI 30-40
-        Sell at RSI 60-70
+        RSI signal - ONLY signals in EXTREME conditions.
+        Override to BUY only if RSI < 30 (oversold)
+        Override to SELL only if RSI > 70 (overbought)
+        Neutral RSI (30-70) does NOT block trades.
         """
         current = self.data.iloc[-1]
         rsi = current['RSI']
         
-        if rsi <= 30:
-            return Signal.STRONG_BUY
-        elif 30 < rsi <= 40:
-            return Signal.BUY
-        elif rsi >= 70:
-            return Signal.STRONG_SELL
-        elif 60 <= rsi < 70:
-            return Signal.SELL
+        # Only signal in extreme conditions
+        if rsi < 30:
+            return Signal.STRONG_BUY  # Extreme oversold
+        elif rsi > 70:
+            return Signal.STRONG_SELL  # Extreme overbought
         
+        # Neutral RSI (30-70) - does NOT affect trade decision
+        return Signal.NEUTRAL
+    
+    def bollinger_bounce_signal(self) -> Signal:
+        """
+        Bollinger Band signal - ONLY signals in EXTREME conditions.
+        Override to BUY only if price at/below lower band
+        Override to SELL only if price at/above upper band
+        Price in middle of bands does NOT block trades.
+        """
+        current = self.data.iloc[-1]
+        
+        # Only signal when price is at extreme Bollinger levels
+        if current['close'] <= current['BB_lower']:
+            return Signal.STRONG_BUY  # At lower band - extreme oversold
+        elif current['close'] >= current['BB_upper']:
+            return Signal.STRONG_SELL  # At upper band - extreme overbought
+        
+        # Price between bands - does NOT affect trade decision
+        return Signal.NEUTRAL
+    
+    def rsi_range_signal(self) -> Signal:
+        """
+        RSI Range signal - ONLY signals in EXTREME conditions.
+        Override to BUY only if RSI < 30 (extreme oversold)
+        Override to SELL only if RSI > 70 (extreme overbought)
+        RSI 30-70 is neutral and does NOT block trades.
+        """
+        current = self.data.iloc[-1]
+        rsi = current['RSI']
+        
+        # Only signal in extreme conditions
+        if rsi < 30:
+            return Signal.STRONG_BUY  # Extreme oversold
+        elif rsi > 70:
+            return Signal.STRONG_SELL  # Extreme overbought
+        
+        # RSI 30-70 - does NOT affect trade decision
         return Signal.NEUTRAL
     
     def macd_signal(self) -> Signal:
