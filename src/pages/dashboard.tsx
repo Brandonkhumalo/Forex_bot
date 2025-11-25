@@ -126,7 +126,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error('Failed to fetch API status');
       return res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 5000,
   });
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery<DashboardData>({
@@ -136,7 +136,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error('Failed to fetch dashboard');
       return res.json();
     },
-    refetchInterval: 10000,
+    refetchInterval: 3000,
   });
 
   const { data: openTrades, isLoading: tradesLoading } = useQuery<Trade[]>({
@@ -146,8 +146,15 @@ export default function Dashboard() {
       if (!res.ok) throw new Error('Failed to fetch trades');
       return res.json();
     },
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
+
+  const liveTotalPnL = openTrades?.reduce((sum, trade) => {
+    const pnl = typeof trade.profit_loss === 'string' 
+      ? parseFloat(trade.profit_loss) 
+      : (trade.profit_loss ?? 0);
+    return sum + pnl;
+  }, 0) ?? 0;
 
   const { data: recentTrades } = useQuery<Trade[]>({
     queryKey: ['/api/trades/history/', { limit: 10 }],
@@ -330,11 +337,12 @@ export default function Dashboard() {
           loading={dashboardLoading}
         />
         <StatCard
-          title="Total P/L"
-          value={formatCurrency(dashboard?.total_profit_loss ?? 0)}
+          title="Open P/L"
+          value={formatCurrency(liveTotalPnL)}
           icon={Activity}
-          trend={(dashboard?.total_profit_loss ?? 0) >= 0 ? 'up' : 'down'}
-          loading={dashboardLoading}
+          trend={liveTotalPnL >= 0 ? 'up' : 'down'}
+          subtitle={`${openTrades?.length ?? 0} open positions`}
+          loading={tradesLoading}
         />
         <StatCard
           title="Win Rate"

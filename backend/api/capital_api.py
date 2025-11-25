@@ -21,7 +21,7 @@ _positions_cache = {
 }
 
 SESSION_DURATION = timedelta(minutes=9)
-POSITIONS_CACHE_DURATION = timedelta(seconds=10)
+POSITIONS_CACHE_DURATION = timedelta(seconds=3)
 
 
 class CapitalComAPI:
