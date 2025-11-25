@@ -884,7 +884,7 @@ class TechnicalAnalysis:
         
         if signal in [Signal.BUY, Signal.STRONG_BUY]:
             stop_loss = entry_price - (atr * 2)
-            take_profit = entry_price + (atr * 3)
+            take_profit = entry_price + (atr * 2)  # 1:1 risk:reward
             
             for demand in zones['demand'][-2:]:
                 if demand['price_low'] < entry_price:
@@ -892,7 +892,7 @@ class TechnicalAnalysis:
                     break
         elif signal in [Signal.SELL, Signal.STRONG_SELL]:
             stop_loss = entry_price + (atr * 2)
-            take_profit = entry_price - (atr * 3)
+            take_profit = entry_price - (atr * 2)  # 1:1 risk:reward
             
             for supply in zones['supply'][-2:]:
                 if supply['price_high'] > entry_price:
