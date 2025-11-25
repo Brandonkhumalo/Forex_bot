@@ -1,0 +1,73 @@
+USE CAPITAL.COM, i have the API keys for now we will trade the Demo  account with a balance of $1000
+
+create for me a ML based trading AI engine, for the first 30 trades the AI engine should trade using technical analysis, after the 30 trades the AI will then use ML to predict profitable trades based on the closed 30 trades, it should combine ML and technical analysis strategies. once the 30 trades mark has been hit then for every 10 closed trades the ML should retrain itself. The AI should run 24/7 and be able to predict USD and GBP news events. The AI should trade these pairs only: XAU/USD, GBP/USD, USD/CAD, EUR/USD, GBP/JPY, NZD/USD. Every 60secs the AI should run a trading cycle to find another trade as long the balance agrees
+
+the user should have the button option in the dashboard of stopping and starting AI. there should also be a analysis page where the user can see the win rate and other analytical tools to see how the AI and ML are performing meaning the backend should have a db to save trade data. each forex pair should have a limit of 20% of the capital (if i have $100 and the ai trades GBP/USD then $20 is dedicated to GBP/USD), XAU/USD should have a limit of 15% of the capital. The AI and ML should calculate and put the TP and SL at 10% of the account balance.
+
+all the trade data will be coming from the live API and the system should use a cache system of 60secs for non essential requests to ease the API requests. The system should allow the user to sign up and log in
+
+Technical Analysis Strategies:
+4. Price Action Strategies (No indicators)
+a) Supply & Demand Zones
+Identify institutional zones
+Buy in demand, sell in supply
+b) Candlestick Patterns
+Engulfing
+Pin bar
+Morning star / Evening star
+c) Market Structure
+Uptrend: HH, HL → buy pullbacks
+Downtrend: LH, LL → sell pullbacks
+
+5. SMC / MSC Strategies (Smart Money Concepts)
+These focus on how banks move the market.
+a) Liquidity Grabs
+Market takes out equal highs/lows → reversal
+Stop-hunting setups
+b) Break of Structure (BOS)
+Shows trend change
+After BOS, wait for a pullback into a demand/supply zone
+c) Fair Value Gaps (FVG)
+Imbalance where price moved too fast
+Price often returns to fill the gap
+Buy at bullish FVG / sell at bearish FVG
+d) Order Blocks
+The last opposite candle before a big move
+Banks use these to enter
+Price returns → touch → reversal
+e) Premium/Discount Zones (Fibonacci 50–79%)
+Only buy in discount
+Only sell in premium
+f) Mitigation
+Price revisits order block to mitigate positions
+
+1. Trend-Following Strategies
+These work when the market is moving strongly in one direction.
+a) Moving Average Crossover
+Buy when short MA crosses above long MA
+Sell when short MA crosses below long MA
+b) Breakout Trading
+Enter when price breaks key support/resistance with volume
+c) RSI + Trendline
+Trade only in the trend direction
+Use RSI dips (30–40) to buy in an uptrend
+RSI peaks (60–70) to sell in a downtrend
+After mitigation, price continues in original direction
+
+3. Range-Bound Strategies
+Best when the market is sideways.
+a) Bollinger Band Bounce
+Lower band: buy
+Upper band: sell
+b) RSI Range Trading
+Buy at RSI 30–40
+Sell at RSI 60–70
+
+use these following time frames to analyze the market and execute trades:
+Market Structure (Trend) -> 4H
+Zones (Supply & Demand) -> 4H and 1H
+Key Levels (Support/Resistance) -> 1H
+Entry -> 15m and 30mins
+
+Backed Stack -> python, drf, jwt and use functional based api views
+frontend Stack -> JavaScript, React and tailwind css
