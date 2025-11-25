@@ -1,0 +1,1 @@
+# Trading AI Django Application

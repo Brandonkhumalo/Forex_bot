@@ -43,9 +43,13 @@
   --chart-3: 28 88% 45%;
   --chart-4: 280 65% 40%;
   --chart-5: 340 82% 38%;
-  --font-sans: Open Sans, sans-serif;
+  --success: 142 76% 36%;
+  --success-foreground: 142 76% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 10%;
+  --font-sans: Inter, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
+  --font-mono: JetBrains Mono, Menlo, monospace;
   --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
@@ -127,6 +131,10 @@
   --chart-3: 28 88% 65%;
   --chart-4: 280 65% 68%;
   --chart-5: 340 82% 65%;
+  --success: 142 76% 46%;
+  --success-foreground: 142 76% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 98%;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
