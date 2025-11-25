@@ -13,12 +13,34 @@ logger = logging.getLogger(__name__)
 
 
 class TradingEngine:
+    """
+    Trading Engine with Bootstrap Mode and ML Mode
+    
+    Bootstrap Mode (0-30 trades):
+    Uses comprehensive technical analysis including:
+    - Price Action (Supply/Demand, Candlesticks, Market Structure)
+    - SMC/MSC (Liquidity Grabs, BOS, FVG, Order Blocks, Premium/Discount)
+    - Trend-Following (MA Crossover, Breakouts, RSI+Trend)
+    - Range-Bound (Bollinger Bounce, RSI Range)
+    
+    Multi-timeframe approach:
+    - Market Structure (Trend) -> 4H
+    - Zones (Supply & Demand) -> 4H and 1H
+    - Key Levels (Support/Resistance) -> 1H
+    - Entry -> 15m and 30m
+    
+    ML Mode (30+ trades):
+    Combines TA signals with ML predictions
+    """
+    
     TRADING_PAIRS = [
         'GBP/USD', 'EUR/USD', 'USD/JPY', 'AUD/USD',
         'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD'
     ]
     
     TIMEFRAMES = ['15m', '30m', '1H', '4H']
+    
+    BOOTSTRAP_TRADE_THRESHOLD = 30
     
     def __init__(self, user):
         self.user = user
@@ -32,6 +54,12 @@ class TradingEngine:
         if not self.authenticated:
             logger.warning("Failed to authenticate with Capital.com API")
         return self.authenticated
+    
+    def get_trade_count(self) -> int:
+        return Trade.objects.filter(user=self.user, status='closed').count()
+    
+    def is_bootstrap_mode(self) -> bool:
+        return self.get_trade_count() < self.BOOTSTRAP_TRADE_THRESHOLD
     
     def get_capital_limit(self, pair: str) -> Decimal:
         if pair == 'XAU/USD':
@@ -67,7 +95,6 @@ class TradingEngine:
             return Decimal('0')
         
         position_size = risk_per_trade / Decimal(str(stop_distance))
-        
         position_size = min(position_size, available)
         
         return position_size.quantize(Decimal('0.01'))
@@ -85,6 +112,147 @@ class TradingEngine:
         
         return data_dict
     
+    def analyze_pair_bootstrap(self, pair: str, data_dict: Dict[str, pd.DataFrame]) -> Dict:
+        """
+        Bootstrap mode analysis using comprehensive TA strategies
+        
+        Multi-timeframe approach:
+        - 4H: Market structure and trend identification
+        - 4H + 1H: Supply/Demand zones
+        - 1H: Key support/resistance levels
+        - 15m + 30m: Entry signals
+        """
+        analysis = analyze_multi_timeframe(data_dict)
+        
+        trade_decision = {
+            'should_trade': False,
+            'direction': None,
+            'confidence': 0,
+            'reasons': [],
+            'entry_price': 0,
+            'stop_loss': 0,
+            'take_profit': 0,
+            'strategies_used': [],
+        }
+        
+        trend = analysis.get('trend', Signal.NEUTRAL)
+        trend_confidence = analysis.get('trend_confidence', 0)
+        structure = analysis.get('structure', {})
+        entry_signal = analysis.get('entry_signal', Signal.NEUTRAL)
+        entry_result = analysis.get('entry_result')
+        aligned = analysis.get('aligned', False)
+        
+        if not aligned:
+            trade_decision['reasons'].append('Timeframes not aligned')
+            return {**analysis, 'trade_decision': trade_decision}
+        
+        if analysis.get('confidence', 0) < 0.5:
+            trade_decision['reasons'].append('Confidence too low')
+            return {**analysis, 'trade_decision': trade_decision}
+        
+        strategies_triggered = []
+        
+        if entry_result:
+            tf_strategies = analysis.get('timeframe_results', {}).get('15m', {}).get('strategies', {})
+            if not tf_strategies:
+                tf_strategies = analysis.get('timeframe_results', {}).get('30m', {}).get('strategies', {})
+            
+            for strategy, signal_name in tf_strategies.items():
+                if signal_name in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+                    strategies_triggered.append(strategy)
+        
+        smc_details = {}
+        if entry_result:
+            smc_details = entry_result.zones.get('smc_details', {})
+        
+        if smc_details.get('order_block'):
+            strategies_triggered.append(f"order_block_{smc_details['order_block']}")
+        if smc_details.get('fvg'):
+            strategies_triggered.append(f"fvg_{smc_details['fvg']}")
+        if smc_details.get('liquidity'):
+            strategies_triggered.append(f"liquidity_{smc_details['liquidity']}")
+        
+        if structure:
+            if structure.get('hh') and structure.get('hl'):
+                strategies_triggered.append('market_structure_uptrend')
+            elif structure.get('lh') and structure.get('ll'):
+                strategies_triggered.append('market_structure_downtrend')
+            if structure.get('bos'):
+                strategies_triggered.append(f"bos_{structure['bos'].get('type', 'unknown')}")
+        
+        fib_zones = analysis.get('fib_zones', {})
+        if fib_zones:
+            current_zone = fib_zones.get('current_zone', 'neutral')
+            if current_zone == 'discount' and entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
+                strategies_triggered.append('premium_discount_buy_in_discount')
+            elif current_zone == 'premium' and entry_signal in [Signal.SELL, Signal.STRONG_SELL]:
+                strategies_triggered.append('premium_discount_sell_in_premium')
+        
+        min_strategies = 2
+        if len(strategies_triggered) >= min_strategies:
+            trade_decision['should_trade'] = True
+            
+            if entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
+                trade_decision['direction'] = 'buy'
+            elif entry_signal in [Signal.SELL, Signal.STRONG_SELL]:
+                trade_decision['direction'] = 'sell'
+            
+            trade_decision['confidence'] = analysis.get('confidence', 0)
+            trade_decision['strategies_used'] = strategies_triggered[:5]
+            trade_decision['reasons'].append(f"Multiple strategies aligned: {', '.join(strategies_triggered[:3])}")
+            
+            if entry_result:
+                trade_decision['entry_price'] = entry_result.entry_price
+                trade_decision['stop_loss'] = entry_result.stop_loss
+                trade_decision['take_profit'] = entry_result.take_profit
+        else:
+            trade_decision['reasons'].append(f"Only {len(strategies_triggered)} strategies triggered, need {min_strategies}")
+        
+        return {**analysis, 'trade_decision': trade_decision}
+    
+    def analyze_pair_ml(self, pair: str, data_dict: Dict[str, pd.DataFrame], ta_analysis: Dict) -> Dict:
+        """
+        ML mode analysis combining TA with ML predictions
+        """
+        if self.ml_engine.should_retrain():
+            logger.info(f"Retraining ML model for user {self.user.email}")
+            self.ml_engine.train()
+        
+        entry_result = ta_analysis.get('timeframe_results', {}).get('15m', {})
+        if not entry_result:
+            entry_result = ta_analysis.get('timeframe_results', {}).get('30m', {})
+        
+        indicators = entry_result.get('indicators', {})
+        ta_signal = ta_analysis.get('entry_signal', Signal.NEUTRAL)
+        ta_confidence = ta_analysis.get('confidence', 0)
+        
+        ml_result = self.ml_engine.get_combined_signal(
+            {'signal': ta_signal.value if hasattr(ta_signal, 'value') else ta_signal, 
+             'confidence': ta_confidence},
+            indicators
+        )
+        
+        ta_analysis['ml_prediction'] = ml_result['ml_prediction']
+        ta_analysis['ml_confidence'] = ml_result['ml_confidence']
+        ta_analysis['combined_signal'] = ml_result['signal']
+        ta_analysis['combined_confidence'] = ml_result['confidence']
+        ta_analysis['signals_aligned'] = ml_result['aligned']
+        
+        trade_decision = ta_analysis.get('trade_decision', {})
+        
+        if ml_result['aligned'] and ml_result['confidence'] >= 0.6:
+            trade_decision['should_trade'] = True
+            trade_decision['direction'] = 'buy' if ml_result['signal'] > 0 else 'sell'
+            trade_decision['confidence'] = ml_result['confidence']
+            trade_decision['strategies_used'].append('ml_prediction')
+            trade_decision['reasons'].append('ML and TA signals aligned')
+        elif not ml_result['aligned']:
+            trade_decision['should_trade'] = False
+            trade_decision['reasons'].append('ML and TA signals conflict')
+        
+        ta_analysis['trade_decision'] = trade_decision
+        return ta_analysis
+    
     def analyze_pair(self, pair: str) -> Optional[Dict]:
         if not self.authenticated:
             return None
@@ -95,34 +263,21 @@ class TradingEngine:
             logger.warning(f"Insufficient data for {pair}")
             return None
         
-        analysis = analyze_multi_timeframe(data_dict)
+        is_bootstrap = self.is_bootstrap_mode()
         
-        closed_trades = Trade.objects.filter(user=self.user, status='closed').count()
+        analysis = self.analyze_pair_bootstrap(pair, data_dict)
         
-        if closed_trades >= 30:
-            if self.ml_engine.should_retrain():
-                logger.info(f"Retraining ML model for user {self.user.email}")
-                self.ml_engine.train()
-            
-            entry_result = analysis.get('timeframe_results', {}).get('15m', {})
-            indicators = entry_result.get('indicators', {})
-            
-            ml_result = self.ml_engine.get_combined_signal(
-                {'signal': analysis['entry_signal'].value, 'confidence': analysis['confidence']},
-                indicators
-            )
-            
-            analysis['ml_prediction'] = ml_result['ml_prediction']
-            analysis['ml_confidence'] = ml_result['ml_confidence']
-            analysis['combined_signal'] = ml_result['signal']
-            analysis['combined_confidence'] = ml_result['confidence']
-            analysis['signals_aligned'] = ml_result['aligned']
+        if not is_bootstrap:
+            analysis = self.analyze_pair_ml(pair, data_dict, analysis)
         else:
             analysis['ml_prediction'] = None
             analysis['ml_confidence'] = None
-            analysis['combined_signal'] = analysis['entry_signal'].value
-            analysis['combined_confidence'] = analysis['confidence']
+            analysis['combined_signal'] = analysis.get('entry_signal', Signal.NEUTRAL)
+            if hasattr(analysis['combined_signal'], 'value'):
+                analysis['combined_signal'] = analysis['combined_signal'].value
+            analysis['combined_confidence'] = analysis.get('confidence', 0)
             analysis['signals_aligned'] = True
+            analysis['mode'] = 'bootstrap'
         
         return analysis
     
@@ -130,21 +285,17 @@ class TradingEngine:
         if not analysis:
             return False
         
+        trade_decision = analysis.get('trade_decision', {})
+        if not trade_decision.get('should_trade', False):
+            return False
+        
         available = self.get_available_capital(pair)
         if available <= 0:
             logger.info(f"No available capital for {pair}")
             return False
         
-        signal = analysis.get('combined_signal', 0)
-        confidence = analysis.get('combined_confidence', 0)
-        
-        if signal == 0:
-            return False
-        
-        if confidence < 0.6:
-            return False
-        
-        if not analysis.get('aligned', True):
+        confidence = trade_decision.get('confidence', 0)
+        if confidence < 0.5:
             return False
         
         open_trades = Trade.objects.filter(
@@ -159,13 +310,12 @@ class TradingEngine:
         return True
     
     def execute_trade(self, pair: str, analysis: Dict) -> Optional[Trade]:
-        signal = analysis.get('combined_signal', 0)
-        direction = 'buy' if signal > 0 else 'sell'
+        trade_decision = analysis.get('trade_decision', {})
+        direction = trade_decision.get('direction', 'buy')
         
-        entry_result = analysis.get('timeframe_results', {}).get('15m', {})
-        entry_price = entry_result.get('entry_price', 0)
-        stop_loss = entry_result.get('stop_loss', 0)
-        take_profit = entry_result.get('take_profit', 0)
+        entry_price = trade_decision.get('entry_price', 0)
+        stop_loss = trade_decision.get('stop_loss', 0)
+        take_profit = trade_decision.get('take_profit', 0)
         
         if not entry_price:
             return None
@@ -185,16 +335,15 @@ class TradingEngine:
                 take_profit=take_profit
             )
         
-        strategy_parts = []
+        strategies_used = trade_decision.get('strategies_used', [])
+        strategy_str = ' + '.join(strategies_used[:3]) if strategies_used else 'Technical'
+        
         if analysis.get('ml_prediction') is not None:
-            strategy_parts.append('ML')
+            strategy_str = 'ML + ' + strategy_str
         
-        ta_strategies = entry_result.get('strategies', {})
-        for strategy, signal_name in ta_strategies.items():
-            if signal_name in ['BUY', 'SELL', 'STRONG_BUY', 'STRONG_SELL']:
-                strategy_parts.append(strategy)
-        
-        strategy_used = ' + '.join(strategy_parts[:3]) if strategy_parts else 'Technical'
+        entry_result = analysis.get('timeframe_results', {}).get('15m', {})
+        if not entry_result:
+            entry_result = analysis.get('timeframe_results', {}).get('30m', {})
         
         trade = Trade.objects.create(
             user=self.user,
@@ -205,14 +354,18 @@ class TradingEngine:
             stop_loss=Decimal(str(stop_loss)) if stop_loss else None,
             take_profit=Decimal(str(take_profit)) if take_profit else None,
             status='open',
-            strategy_used=strategy_used,
+            strategy_used=strategy_str,
             ml_prediction=analysis.get('ml_prediction'),
             ml_confidence=analysis.get('ml_confidence'),
             technical_signals={
                 'indicators': entry_result.get('indicators', {}),
-                'strategies': ta_strategies,
-                'trend': analysis.get('trend', Signal.NEUTRAL).name if hasattr(analysis.get('trend'), 'name') else str(analysis.get('trend')),
+                'strategies': entry_result.get('strategies', {}),
+                'strategies_triggered': strategies_used,
+                'trend': str(analysis.get('trend', 'neutral')),
+                'structure': analysis.get('structure', {}),
                 'confidence': analysis.get('combined_confidence', 0),
+                'mode': 'bootstrap' if self.is_bootstrap_mode() else 'ml',
+                'reasons': trade_decision.get('reasons', []),
             },
             capital_api_deal_id=result.get('dealId', '') if result else '',
         )
@@ -222,7 +375,7 @@ class TradingEngine:
             session.total_trades += 1
             session.save()
         
-        logger.info(f"Opened trade: {pair} {direction} at {entry_price}")
+        logger.info(f"Opened trade: {pair} {direction} at {entry_price} using {strategy_str}")
         
         return trade
     
@@ -297,6 +450,10 @@ class TradingEngine:
         
         self.update_open_trades()
         self.check_and_close_trades()
+        
+        mode = 'Bootstrap' if self.is_bootstrap_mode() else 'ML'
+        trade_count = self.get_trade_count()
+        logger.info(f"Running trading cycle in {mode} mode ({trade_count}/{self.BOOTSTRAP_TRADE_THRESHOLD} trades)")
         
         for pair in self.TRADING_PAIRS:
             try:
