@@ -116,6 +116,12 @@ class TradingEngine:
         """
         Bootstrap mode analysis using comprehensive TA strategies
         
+        Strategy Categories:
+        1. SMC/MSC - Can trade independently (Order Blocks, FVG, Liquidity Grabs, BOS, Premium/Discount)
+        2. Price Action - Can trade independently (Supply/Demand, Candlesticks, Market Structure)
+        3. Trend-Following - Requires 2 aligned strategies (MA Crossover, Breakout, RSI+Trend)
+        4. Range-Bound - Requires 2 aligned strategies (Bollinger Bounce, RSI Range)
+        
         Multi-timeframe approach:
         - 4H: Market structure and trend identification
         - 4H + 1H: Supply/Demand zones
@@ -133,6 +139,7 @@ class TradingEngine:
             'stop_loss': 0,
             'take_profit': 0,
             'strategies_used': [],
+            'strategy_category': None,
         }
         
         trend = analysis.get('trend', Signal.NEUTRAL)
@@ -146,67 +153,139 @@ class TradingEngine:
             trade_decision['reasons'].append('Timeframes not aligned')
             return {**analysis, 'trade_decision': trade_decision}
         
-        if analysis.get('confidence', 0) < 0.5:
+        if analysis.get('confidence', 0) < 0.4:
             trade_decision['reasons'].append('Confidence too low')
             return {**analysis, 'trade_decision': trade_decision}
         
-        strategies_triggered = []
+        smc_strategies = []
+        price_action_strategies = []
+        trend_following_strategies = []
+        range_bound_strategies = []
         
+        tf_strategies = {}
         if entry_result:
             tf_strategies = analysis.get('timeframe_results', {}).get('15m', {}).get('strategies', {})
             if not tf_strategies:
                 tf_strategies = analysis.get('timeframe_results', {}).get('30m', {}).get('strategies', {})
-            
-            for strategy, signal_name in tf_strategies.items():
-                if signal_name in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
-                    strategies_triggered.append(strategy)
         
         smc_details = {}
         if entry_result:
             smc_details = entry_result.zones.get('smc_details', {})
         
         if smc_details.get('order_block'):
-            strategies_triggered.append(f"order_block_{smc_details['order_block']}")
+            smc_strategies.append(f"order_block_{smc_details['order_block']}")
         if smc_details.get('fvg'):
-            strategies_triggered.append(f"fvg_{smc_details['fvg']}")
+            smc_strategies.append(f"fvg_{smc_details['fvg']}")
         if smc_details.get('liquidity'):
-            strategies_triggered.append(f"liquidity_{smc_details['liquidity']}")
-        
-        if structure:
-            if structure.get('hh') and structure.get('hl'):
-                strategies_triggered.append('market_structure_uptrend')
-            elif structure.get('lh') and structure.get('ll'):
-                strategies_triggered.append('market_structure_downtrend')
-            if structure.get('bos'):
-                strategies_triggered.append(f"bos_{structure['bos'].get('type', 'unknown')}")
+            smc_strategies.append(f"liquidity_{smc_details['liquidity']}")
+        if structure and structure.get('bos'):
+            smc_strategies.append(f"bos_{structure['bos'].get('type', 'unknown')}")
         
         fib_zones = analysis.get('fib_zones', {})
         if fib_zones:
             current_zone = fib_zones.get('current_zone', 'neutral')
             if current_zone == 'discount' and entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
-                strategies_triggered.append('premium_discount_buy_in_discount')
+                smc_strategies.append('premium_discount_buy_in_discount')
             elif current_zone == 'premium' and entry_signal in [Signal.SELL, Signal.STRONG_SELL]:
-                strategies_triggered.append('premium_discount_sell_in_premium')
+                smc_strategies.append('premium_discount_sell_in_premium')
         
-        min_strategies = 2
-        if len(strategies_triggered) >= min_strategies:
-            trade_decision['should_trade'] = True
-            
+        zones = analysis.get('zones_4h', {}) or analysis.get('zones_1h', {})
+        current_price = entry_result.entry_price if entry_result else 0
+        if zones and current_price:
+            for demand in zones.get('demand', []):
+                if demand.get('price_low', 0) <= current_price <= demand.get('price_high', 0):
+                    price_action_strategies.append('supply_demand_in_demand_zone')
+                    break
+            for supply in zones.get('supply', []):
+                if supply.get('price_low', 0) <= current_price <= supply.get('price_high', 0):
+                    price_action_strategies.append('supply_demand_in_supply_zone')
+                    break
+        
+        if tf_strategies.get('candlestick') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            price_action_strategies.append(f"candlestick_{tf_strategies['candlestick'].lower()}")
+        
+        if structure:
+            if structure.get('hh') and structure.get('hl'):
+                price_action_strategies.append('market_structure_uptrend_hh_hl')
+            elif structure.get('lh') and structure.get('ll'):
+                price_action_strategies.append('market_structure_downtrend_lh_ll')
+        
+        if tf_strategies.get('ma_crossover') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            trend_following_strategies.append(f"ma_crossover_{tf_strategies['ma_crossover'].lower()}")
+        if tf_strategies.get('breakout') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            trend_following_strategies.append(f"breakout_{tf_strategies['breakout'].lower()}")
+        if tf_strategies.get('rsi_trend') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            trend_following_strategies.append(f"rsi_trend_{tf_strategies['rsi_trend'].lower()}")
+        if tf_strategies.get('macd') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            trend_following_strategies.append(f"macd_{tf_strategies['macd'].lower()}")
+        
+        if tf_strategies.get('bollinger') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            range_bound_strategies.append(f"bollinger_{tf_strategies['bollinger'].lower()}")
+        if tf_strategies.get('rsi_range') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
+            range_bound_strategies.append(f"rsi_range_{tf_strategies['rsi_range'].lower()}")
+        
+        should_trade = False
+        strategy_category = None
+        strategies_used = []
+        reasons = []
+        
+        if smc_strategies:
+            should_trade = True
+            strategy_category = 'SMC'
+            strategies_used = smc_strategies
+            reasons.append(f"SMC signal: {smc_strategies[0]}")
+        
+        elif price_action_strategies:
+            should_trade = True
+            strategy_category = 'Price Action'
+            strategies_used = price_action_strategies
+            reasons.append(f"Price Action signal: {price_action_strategies[0]}")
+        
+        elif len(trend_following_strategies) >= 2:
+            should_trade = True
+            strategy_category = 'Trend-Following'
+            strategies_used = trend_following_strategies
+            reasons.append(f"Trend-Following aligned: {', '.join(trend_following_strategies[:2])}")
+        
+        elif len(range_bound_strategies) >= 2:
+            should_trade = True
+            strategy_category = 'Range-Bound'
+            strategies_used = range_bound_strategies
+            reasons.append(f"Range-Bound aligned: {', '.join(range_bound_strategies[:2])}")
+        
+        elif len(trend_following_strategies) >= 1 and len(range_bound_strategies) >= 1:
+            should_trade = True
+            strategy_category = 'Mixed'
+            strategies_used = trend_following_strategies + range_bound_strategies
+            reasons.append(f"Mixed strategies aligned: {trend_following_strategies[0]} + {range_bound_strategies[0]}")
+        
+        else:
+            if trend_following_strategies:
+                reasons.append(f"Trend-Following needs 2 aligned, only have: {trend_following_strategies}")
+            if range_bound_strategies:
+                reasons.append(f"Range-Bound needs 2 aligned, only have: {range_bound_strategies}")
+            if not (smc_strategies or price_action_strategies or trend_following_strategies or range_bound_strategies):
+                reasons.append("No strategy signals detected")
+        
+        if should_trade:
             if entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
                 trade_decision['direction'] = 'buy'
             elif entry_signal in [Signal.SELL, Signal.STRONG_SELL]:
                 trade_decision['direction'] = 'sell'
-            
-            trade_decision['confidence'] = analysis.get('confidence', 0)
-            trade_decision['strategies_used'] = strategies_triggered[:5]
-            trade_decision['reasons'].append(f"Multiple strategies aligned: {', '.join(strategies_triggered[:3])}")
-            
-            if entry_result:
-                trade_decision['entry_price'] = entry_result.entry_price
-                trade_decision['stop_loss'] = entry_result.stop_loss
-                trade_decision['take_profit'] = entry_result.take_profit
-        else:
-            trade_decision['reasons'].append(f"Only {len(strategies_triggered)} strategies triggered, need {min_strategies}")
+            else:
+                should_trade = False
+                reasons.append("No clear directional signal")
+        
+        trade_decision['should_trade'] = should_trade
+        trade_decision['strategy_category'] = strategy_category
+        trade_decision['strategies_used'] = strategies_used[:5]
+        trade_decision['confidence'] = analysis.get('confidence', 0)
+        trade_decision['reasons'] = reasons
+        
+        if entry_result and should_trade:
+            trade_decision['entry_price'] = entry_result.entry_price
+            trade_decision['stop_loss'] = entry_result.stop_loss
+            trade_decision['take_profit'] = entry_result.take_profit
         
         return {**analysis, 'trade_decision': trade_decision}
     
