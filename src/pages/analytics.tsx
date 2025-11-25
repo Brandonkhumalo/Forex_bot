@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   BarChart3, TrendingUp, TrendingDown, Target, 
-  Brain, Clock, PieChart, Activity
+  Brain, Clock, PieChart, Activity, ChevronLeft, ChevronRight, DollarSign
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { 
@@ -137,6 +139,8 @@ function StatCard({
 const COLORS = ['hsl(217, 91%, 60%)', 'hsl(142, 76%, 46%)', 'hsl(38, 92%, 50%)', 'hsl(0, 84%, 60%)', 'hsl(280, 65%, 60%)', 'hsl(340, 82%, 52%)'];
 
 export default function Analytics() {
+  const [pairGalleryIndex, setPairGalleryIndex] = useState(0);
+
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ['/api/analytics/'],
     queryFn: async () => {
@@ -194,6 +198,18 @@ export default function Analytics() {
         }))
     : [];
 
+  // Pair gallery navigation
+  const currentPairData = pairData[pairGalleryIndex];
+  const totalPairs = pairData.length;
+
+  const handlePrevPair = () => {
+    setPairGalleryIndex((prev) => (prev - 1 + totalPairs) % totalPairs);
+  };
+
+  const handleNextPair = () => {
+    setPairGalleryIndex((prev) => (prev + 1) % totalPairs);
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-2">
@@ -230,6 +246,95 @@ export default function Analytics() {
           loading={isLoading}
         />
       </div>
+
+      {/* Pair P&L Gallery */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Pair Profit/Loss Gallery
+          </CardTitle>
+          <CardDescription>
+            Browse through each trading pair's performance
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : totalPairs > 0 && currentPairData ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handlePrevPair}
+                  disabled={totalPairs <= 1}
+                  data-testid="button-prev-pair"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold">{currentPairData.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {pairGalleryIndex + 1} of {totalPairs}
+                  </p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleNextPair}
+                  disabled={totalPairs <= 1}
+                  data-testid="button-next-pair"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="p-4 bg-muted/50 rounded-lg">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total P/L</p>
+                    <p className={`text-2xl font-bold font-mono ${
+                      currentPairData.pnl >= 0 ? 'text-success' : 'text-destructive'
+                    }`}>
+                      {currentPairData.pnl >= 0 ? '+' : ''}{formatCurrency(currentPairData.pnl)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Trades</p>
+                    <p className="text-2xl font-bold font-mono">{currentPairData.trades}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Win Rate</p>
+                    <p className={`text-2xl font-bold font-mono ${
+                      currentPairData.winRate >= 50 ? 'text-success' : 'text-destructive'
+                    }`}>
+                      {currentPairData.winRate.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-center gap-1">
+                {pairData.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setPairGalleryIndex(idx)}
+                    className={`h-2 w-2 rounded-full transition-colors ${
+                      idx === pairGalleryIndex ? 'bg-primary' : 'bg-muted-foreground/30'
+                    }`}
+                    data-testid={`dot-pair-${idx}`}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No trading pair data available yet
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
