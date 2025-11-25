@@ -97,14 +97,30 @@ def get_dashboard(request):
         trades_since_last_train = closed_trades.count() - ml_model.trades_trained_on
     trades_until_retrain = max(0, 10 - trades_since_last_train) if ml_active else 0
     
-    allocated_capital = Trade.objects.filter(
-        user=user, status='open'
-    ).aggregate(total=Sum('position_size'))['total'] or Decimal('0')
+    account_balance = Decimal('0')
+    available_capital = Decimal('0')
+    api_connected = False
     
-    available_capital = settings.current_capital - allocated_capital
+    api = CapitalComAPI()
+    if api.authenticate():
+        api_connected = True
+        account_info = api.get_account_info()
+        if account_info:
+            account_balance = Decimal(str(account_info.get('balance', 0)))
+            available_capital = Decimal(str(account_info.get('available', 0)))
+            
+            settings.current_capital = account_balance
+            settings.save()
+    
+    if not api_connected:
+        allocated_capital = Trade.objects.filter(
+            user=user, status='open'
+        ).aggregate(total=Sum('position_size'))['total'] or Decimal('0')
+        account_balance = settings.current_capital
+        available_capital = settings.current_capital - allocated_capital
     
     data = {
-        'account_balance': settings.current_capital,
+        'account_balance': account_balance,
         'available_capital': available_capital,
         'total_profit_loss': total_pnl,
         'win_rate': round(win_rate, 2),
@@ -115,6 +131,7 @@ def get_dashboard(request):
         'ml_accuracy': round(ml_accuracy * 100, 2),
         'trades_until_ml': trades_until_ml,
         'trades_until_retrain': trades_until_retrain,
+        'api_connected': api_connected,
     }
     
     return Response(data)
