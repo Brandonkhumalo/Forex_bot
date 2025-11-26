@@ -443,6 +443,12 @@ def close_position(request, trade_id):
     current_price = trade.entry_price
     authenticated = api.authenticate()
     
+    usd_jpy_rate = None
+    if trade.pair.endswith('/JPY') and authenticated:
+        prices = api.get_prices()
+        if prices and 'USD/JPY' in prices:
+            usd_jpy_rate = prices['USD/JPY'].get('bid', 150)
+    
     if trade.capital_api_deal_id and authenticated:
         positions = api.get_open_positions()
         if positions:
@@ -452,7 +458,7 @@ def close_position(request, trade_id):
                     break
         api.close_position(trade.capital_api_deal_id)
     
-    trade.close_trade(current_price)
+    trade.close_trade(current_price, usd_jpy_rate=usd_jpy_rate)
     
     settings = TradingSettings.objects.get_or_create(user=request.user)[0]
     settings.current_capital += trade.profit_loss
@@ -476,6 +482,12 @@ def close_all_profitable(request):
     
     api = CapitalComAPI()
     authenticated = api.authenticate()
+    
+    usd_jpy_rate = None
+    if authenticated:
+        prices = api.get_prices()
+        if prices and 'USD/JPY' in prices:
+            usd_jpy_rate = prices['USD/JPY'].get('bid', 150)
     
     positions_map = {}
     if authenticated:
@@ -509,7 +521,7 @@ def close_all_profitable(request):
         if trade.capital_api_deal_id and authenticated:
             api.close_position(trade.capital_api_deal_id)
         
-        trade.close_trade(current_price)
+        trade.close_trade(current_price, usd_jpy_rate=usd_jpy_rate if trade.pair.endswith('/JPY') else None)
         total_profit += trade.profit_loss
         closed_count += 1
     
@@ -541,6 +553,12 @@ def close_all_positions(request):
     api = CapitalComAPI()
     authenticated = api.authenticate()
     
+    usd_jpy_rate = None
+    if authenticated:
+        prices = api.get_prices()
+        if prices and 'USD/JPY' in prices:
+            usd_jpy_rate = prices['USD/JPY'].get('bid', 150)
+    
     positions_map = {}
     if authenticated:
         positions = api.get_open_positions()
@@ -560,7 +578,7 @@ def close_all_positions(request):
         if trade.capital_api_deal_id and authenticated:
             api.close_position(trade.capital_api_deal_id)
         
-        trade.close_trade(current_price)
+        trade.close_trade(current_price, usd_jpy_rate=usd_jpy_rate if trade.pair.endswith('/JPY') else None)
         total_pnl += trade.profit_loss
         closed_count += 1
     

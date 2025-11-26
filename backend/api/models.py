@@ -73,7 +73,7 @@ class Trade(models.Model):
     def __str__(self):
         return f"{self.pair} {self.direction} - {self.status}"
     
-    def close_trade(self, exit_price, actual_profit_loss=None):
+    def close_trade(self, exit_price, actual_profit_loss=None, usd_jpy_rate=None):
         from decimal import Decimal
         self.exit_price = exit_price
         self.status = 'closed'
@@ -91,6 +91,11 @@ class Trade(models.Model):
             
             if self.pair.startswith('USD/'):
                 self.profit_loss = raw_pnl / exit_decimal
+            elif self.pair.endswith('/JPY'):
+                if usd_jpy_rate:
+                    self.profit_loss = raw_pnl / Decimal(str(usd_jpy_rate))
+                else:
+                    self.profit_loss = raw_pnl / Decimal('150')
             else:
                 self.profit_loss = raw_pnl
         

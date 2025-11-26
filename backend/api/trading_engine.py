@@ -663,7 +663,13 @@ class TradingEngine:
             else:
                 outcome_reason = 'broker_closed'
         
-        trade.close_trade(exit_price)
+        usd_jpy_rate = None
+        if trade.pair.endswith('/JPY'):
+            prices = self.api.get_prices()
+            if prices and 'USD/JPY' in prices:
+                usd_jpy_rate = prices['USD/JPY'].get('bid', 150)
+        
+        trade.close_trade(exit_price, usd_jpy_rate=usd_jpy_rate)
         
         self._update_session_stats(trade)
         
@@ -682,6 +688,13 @@ class TradingEngine:
             return
         
         open_trades = Trade.objects.filter(user=self.user, status='open')
+        
+        usd_jpy_rate = None
+        jpy_trades_exist = any(t.pair.endswith('/JPY') for t in open_trades)
+        if jpy_trades_exist:
+            prices = self.api.get_prices()
+            if prices and 'USD/JPY' in prices:
+                usd_jpy_rate = prices['USD/JPY'].get('bid', 150)
         
         for trade in open_trades:
             if not trade.capital_api_deal_id:
@@ -704,7 +717,7 @@ class TradingEngine:
                 if should_close:
                     result = self.api.close_position(trade.capital_api_deal_id)
                     if result:
-                        trade.close_trade(trade.current_price)
+                        trade.close_trade(trade.current_price, usd_jpy_rate=usd_jpy_rate if trade.pair.endswith('/JPY') else None)
                         self._update_session_stats(trade)
     
     def _update_session_stats(self, trade: Trade):
