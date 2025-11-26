@@ -110,7 +110,8 @@ CAPITAL_COM_DEMO_URL = 'https://demo-api-capital.backend-capital.com'
 
 TRADING_PAIRS = [
     'GBP/USD', 'EUR/USD', 'USD/JPY', 'AUD/USD', 
-    'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD'
+    'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD',
+    'GBP/JPY', 'EUR/JPY'
 ]
 
 FOREX_CAPITAL_LIMIT = 0.20

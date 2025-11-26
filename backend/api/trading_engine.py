@@ -35,7 +35,8 @@ class TradingEngine:
     
     TRADING_PAIRS = [
         'GBP/USD', 'EUR/USD', 'USD/JPY', 'AUD/USD',
-        'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD'
+        'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD',
+        'GBP/JPY', 'EUR/JPY'
     ]
     
     TIMEFRAMES = ['15m', '30m', '1H', '4H']
@@ -52,6 +53,8 @@ class TradingEngine:
         'NZD/USD': 500,
         'USD/CHF': 500,
         'XAU/USD': 0.5,
+        'GBP/JPY': 500,
+        'EUR/JPY': 500,
     }
     
     def __init__(self, user):
@@ -401,8 +404,8 @@ class TradingEngine:
                     take_profit = rounded_entry - 10
                 logger.info(f"  {pair} XAU/USD SL/TP: entry={entry_price:.2f}, rounded={rounded_entry:.0f}, SL={stop_loss:.0f}, TP={take_profit:.0f}")
             
-            # USD/JPY special SL/TP: SL = 1.5 pips, TP = 2.0 pips from rounded entry
-            elif pair == 'USD/JPY':
+            # JPY pairs special SL/TP: SL = 1.5 pips, TP = 2.0 pips from rounded entry
+            elif 'JPY' in pair:
                 # Round entry to nearest whole number
                 rounded_entry = round(entry_price)
                 if trade_decision['direction'] == 'buy':
@@ -413,7 +416,7 @@ class TradingEngine:
                     # SELL: SL = rounded + 1.5, TP = rounded - 2
                     stop_loss = rounded_entry + 1.5
                     take_profit = rounded_entry - 2
-                logger.info(f"  {pair} USD/JPY SL/TP: entry={entry_price:.5f}, rounded={rounded_entry:.0f}, SL={stop_loss:.2f}, TP={take_profit:.2f}")
+                logger.info(f"  {pair} JPY SL/TP: entry={entry_price:.5f}, rounded={rounded_entry:.0f}, SL={stop_loss:.2f}, TP={take_profit:.2f}")
             
             trade_decision['entry_price'] = entry_price
             trade_decision['stop_loss'] = stop_loss

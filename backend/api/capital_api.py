@@ -43,6 +43,8 @@ class CapitalComAPI:
             'NZD/USD': 'NZDUSD',
             'USD/CHF': 'USDCHF',
             'XAU/USD': 'GOLD',
+            'GBP/JPY': 'GBPJPY',
+            'EUR/JPY': 'EURJPY',
         }
         
         self.timeframe_mapping = {
