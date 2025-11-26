@@ -707,6 +707,62 @@ def get_account_info(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def fix_jpy_trades(request):
+    """Fix P&L for JPY trades that were calculated incorrectly"""
+    from decimal import Decimal
+    
+    api = CapitalComAPI()
+    usd_jpy_rate = Decimal('150')
+    if api.authenticate():
+        prices = api.get_prices()
+        if prices and 'USD/JPY' in prices:
+            usd_jpy_rate = Decimal(str(prices['USD/JPY'].get('bid', 150)))
+    
+    fixed_trades = []
+    jpy_trades = Trade.objects.filter(
+        user=request.user,
+        pair__endswith='/JPY',
+        status='closed'
+    )
+    
+    for trade in jpy_trades:
+        if trade.exit_price and trade.entry_price:
+            if trade.direction == 'buy':
+                raw_pnl = (trade.exit_price - trade.entry_price) * trade.position_size
+            else:
+                raw_pnl = (trade.entry_price - trade.exit_price) * trade.position_size
+            
+            correct_pnl = raw_pnl / usd_jpy_rate
+            
+            if abs(trade.profit_loss - correct_pnl) > Decimal('0.01'):
+                old_pnl = trade.profit_loss
+                trade.profit_loss = correct_pnl
+                trade.outcome = 'win' if correct_pnl > 0 else 'loss'
+                trade.save()
+                
+                fixed_trades.append({
+                    'id': trade.id,
+                    'pair': trade.pair,
+                    'old_pnl': float(old_pnl),
+                    'new_pnl': float(correct_pnl),
+                    'usd_jpy_rate': float(usd_jpy_rate)
+                })
+    
+    settings = TradingSettings.objects.get_or_create(user=request.user)[0]
+    total_adjustment = sum(t['new_pnl'] - t['old_pnl'] for t in fixed_trades)
+    settings.current_capital += Decimal(str(total_adjustment))
+    settings.save()
+    
+    return Response({
+        'message': f'Fixed {len(fixed_trades)} JPY trade(s)',
+        'trades_fixed': fixed_trades,
+        'capital_adjustment': total_adjustment,
+        'new_capital': float(settings.current_capital)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def run_trading_cycle(request):
     settings = TradingSettings.objects.get_or_create(user=request.user)[0]
     

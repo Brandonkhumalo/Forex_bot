@@ -34,4 +34,5 @@ urlpatterns = [
     
     path('account/', views.get_account_info, name='account_info'),
     path('trading/run-cycle/', views.run_trading_cycle, name='run_trading_cycle'),
+    path('trading/fix-jpy/', views.fix_jpy_trades, name='fix_jpy_trades'),
 ]
