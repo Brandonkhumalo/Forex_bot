@@ -976,17 +976,21 @@ def analyze_multi_timeframe(data_dict: Dict[str, pd.DataFrame]) -> Dict:
     if trend in [Signal.BUY, Signal.STRONG_BUY]:
         if entry_signal in [Signal.SELL, Signal.STRONG_SELL]:
             aligned = False
-            alignment_score = 0.3
+            alignment_score = 0.5
         elif entry_signal == Signal.NEUTRAL:
-            alignment_score = 0.6
+            alignment_score = 0.8
     elif trend in [Signal.SELL, Signal.STRONG_SELL]:
         if entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
             aligned = False
-            alignment_score = 0.3
+            alignment_score = 0.5
         elif entry_signal == Signal.NEUTRAL:
-            alignment_score = 0.6
+            alignment_score = 0.8
     
-    final_confidence = entry_confidence * alignment_score
+    ENTRY_WEIGHT = 0.60
+    TREND_WEIGHT = 0.40
+    
+    weighted_confidence = (entry_confidence * ENTRY_WEIGHT) + (trend_confidence * TREND_WEIGHT)
+    final_confidence = weighted_confidence * alignment_score
     
     return {
         'trend': trend,
