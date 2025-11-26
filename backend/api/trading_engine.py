@@ -234,7 +234,7 @@ class TradingEngine:
             logger.info(f"  {pair}: Skipping - timeframes not aligned")
             return {**analysis, 'trade_decision': trade_decision}
         
-        min_confidence = 0.40
+        min_confidence = 0.30
         if confidence < min_confidence:
             trade_decision['reasons'].append(f'Confidence {confidence:.2f} < {min_confidence}')
             logger.info(f"  {pair}: Skipping - confidence too low ({confidence:.2f} < {min_confidence})")
@@ -513,7 +513,7 @@ class TradingEngine:
             return False
         
         confidence = trade_decision.get('confidence', 0)
-        min_trade_confidence = 0.40
+        min_trade_confidence = 0.30
         if confidence < min_trade_confidence:
             logger.info(f"  {pair}: Confidence {confidence:.2f} < {min_trade_confidence}")
             return False
