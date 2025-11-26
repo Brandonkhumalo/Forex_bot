@@ -803,12 +803,8 @@ class TechnicalAnalysis:
         smc_signal, smc_confidence, smc_details = self.smc_composite_signal()
         
         strategies = {
-            'ma_crossover': self.ma_crossover_signal(),
             'rsi_trend': self.rsi_trend_signal(),
-            'rsi_range': self.rsi_range_signal(),
-            'bollinger': self.bollinger_bounce_signal(),
             'macd': self.macd_signal(),
-            'breakout': breakout_signal,
             'smc': smc_signal,
         }
         
@@ -828,13 +824,9 @@ class TechnicalAnalysis:
         weights = {
             'smc': 2.0,
             'market_structure': 1.5,
-            'ma_crossover': 1.2,
             'macd': 1.2,
-            'breakout': 1.3,
             'candlestick': 1.0,
             'rsi_trend': 1.0,
-            'bollinger': 0.8,
-            'rsi_range': 0.8,
         }
         
         weighted_sum = 0
