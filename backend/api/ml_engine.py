@@ -21,7 +21,8 @@ MIN_TRADES_PER_PAIR = 5
 
 TRADING_PAIRS = [
     'GBP/USD', 'EUR/USD', 'USD/JPY', 'AUD/USD',
-    'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD'
+    'USD/CAD', 'NZD/USD', 'USD/CHF', 'XAU/USD',
+    'GBP/JPY', 'EUR/JPY'
 ]
 
 
