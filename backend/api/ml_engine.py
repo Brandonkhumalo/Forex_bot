@@ -231,9 +231,9 @@ class MLTradingEngine:
             y_pred = model.predict(X_test_scaled)
             
             accuracy = accuracy_score(y_test, y_pred)
-            precision = precision_score(y_test, y_pred, zero_division=0.5)
-            recall = recall_score(y_test, y_pred, zero_division=0.5)
-            f1 = f1_score(y_test, y_pred, zero_division=0.5)
+            precision = precision_score(y_test, y_pred, zero_division=0.0)
+            recall = recall_score(y_test, y_pred, zero_division=0.0)
+            f1 = f1_score(y_test, y_pred, zero_division=0.0)
             
             cv_folds = min(3, len(X_train))
             if cv_folds >= 2:
