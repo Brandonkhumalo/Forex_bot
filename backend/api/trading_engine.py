@@ -427,6 +427,7 @@ class TradingEngine:
     def analyze_pair_ml(self, pair: str, data_dict: Dict[str, pd.DataFrame], ta_analysis: Dict) -> Dict:
         """
         ML mode analysis combining TA with ML predictions (per-pair)
+        Enhanced with regime detection, session context, and expanded features
         """
         self.train_pair_if_ready(pair)
         
@@ -435,12 +436,49 @@ class TradingEngine:
             entry_result = ta_analysis.get('timeframe_results', {}).get('30m', {})
         
         indicators = entry_result.get('indicators', {})
+        
+        if '15m' in data_dict and len(data_dict['15m']) > 0:
+            df = data_dict['15m']
+            current = df.iloc[-1]
+            indicators['atr_50'] = float(current.get('ATR_50', indicators.get('atr', 0))) if 'ATR_50' in df.columns else indicators.get('atr', 0)
+            indicators['adx'] = float(current.get('ADX', 25)) if 'ADX' in df.columns else 25
+            indicators['bb_width'] = float(current.get('BB_width', 0.02)) if 'BB_width' in df.columns else 0.02
+            indicators['distance_from_high'] = float(current.get('distance_from_high', 0.5)) if 'distance_from_high' in df.columns else 0.5
+            indicators['distance_from_low'] = float(current.get('distance_from_low', 0.5)) if 'distance_from_low' in df.columns else 0.5
+            indicators['volume_ratio'] = float(current.get('volume_ratio', 1.0)) if 'volume_ratio' in df.columns else 1.0
+            indicators['sma_200'] = float(current.get('SMA_200', indicators.get('sma_50', 0))) if 'SMA_200' in df.columns else indicators.get('sma_50', 0)
+            indicators['close'] = float(current.get('close', 0))
+        
         ta_signal = ta_analysis.get('entry_signal', Signal.NEUTRAL)
         ta_confidence = ta_analysis.get('confidence', 0)
         
+        zones = ta_analysis.get('zones', {})
+        liquidity_score = 0.5
+        if zones:
+            active_zones = 0
+            if zones.get('supply'):
+                active_zones += len([z for z in zones['supply'] if z.get('active', False)])
+            if zones.get('demand'):
+                active_zones += len([z for z in zones['demand'] if z.get('active', False)])
+            liquidity_score = min(1.0, 0.3 + active_zones * 0.15)
+        
+        structure = ta_analysis.get('structure', {})
+        trend_age = 10
+        if structure.get('trend') in ['uptrend', 'downtrend']:
+            trend_age = 20
+        
+        signals_dict = {
+            'signal': ta_signal.value if hasattr(ta_signal, 'value') else ta_signal, 
+            'confidence': ta_confidence,
+            'trend_strength': ta_analysis.get('trend_confidence', 0.5),
+            'price_momentum': indicators.get('price_momentum', 0),
+            'liquidity_score': liquidity_score,
+            'trend_age': trend_age,
+            'regime_score': 0.5,
+        }
+        
         ml_result = self.ml_engine.get_combined_signal(
-            {'signal': ta_signal.value if hasattr(ta_signal, 'value') else ta_signal, 
-             'confidence': ta_confidence},
+            signals_dict,
             indicators,
             pair=pair
         )
@@ -450,18 +488,30 @@ class TradingEngine:
         ta_analysis['combined_signal'] = ml_result['signal']
         ta_analysis['combined_confidence'] = ml_result['confidence']
         ta_analysis['signals_aligned'] = ml_result['aligned']
+        ta_analysis['volatility_regime'] = ml_result.get('volatility_regime', 'normal')
+        ta_analysis['trend_regime'] = ml_result.get('trend_regime', 'unknown')
+        ta_analysis['regime_score'] = ml_result.get('regime_score', 0.5)
+        ta_analysis['tp_probability'] = ml_result.get('tp_probability', 0.5)
+        ta_analysis['session'] = ml_result.get('session', 1)
         
         trade_decision = ta_analysis.get('trade_decision', {})
         
-        if ml_result['aligned'] and ml_result['confidence'] >= 0.6:
+        volatility_regime = ml_result.get('volatility_regime', 'normal')
+        regime_score = ml_result.get('regime_score', 0.5)
+        
+        if volatility_regime == 'high_volatility' and regime_score < 0.4:
+            trade_decision['should_trade'] = False
+            trade_decision['reasons'].append('High volatility regime - too risky')
+        elif ml_result['aligned'] and ml_result['confidence'] >= 0.30:
             trade_decision['should_trade'] = True
             trade_decision['direction'] = 'buy' if ml_result['signal'] > 0 else 'sell'
             trade_decision['confidence'] = ml_result['confidence']
-            trade_decision['strategies_used'].append('ml_prediction')
-            trade_decision['reasons'].append('ML and TA signals aligned')
+            trade_decision['strategies_used'].append('ml_ensemble')
+            trade_decision['reasons'].append(f'ML+TA aligned (regime={volatility_regime}, score={regime_score:.2f})')
         elif not ml_result['aligned']:
-            trade_decision['should_trade'] = False
-            trade_decision['reasons'].append('ML and TA signals conflict')
+            if ml_result['confidence'] < 0.4:
+                trade_decision['should_trade'] = False
+                trade_decision['reasons'].append('ML and TA signals conflict')
         
         ta_analysis['trade_decision'] = trade_decision
         return ta_analysis

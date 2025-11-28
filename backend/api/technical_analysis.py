@@ -65,6 +65,7 @@ class TechnicalAnalysis:
         df['BB_std'] = df['close'].rolling(window=20).std()
         df['BB_upper'] = df['BB_middle'] + (df['BB_std'] * 2)
         df['BB_lower'] = df['BB_middle'] - (df['BB_std'] * 2)
+        df['BB_width'] = (df['BB_upper'] - df['BB_lower']) / df['BB_middle']
         
         df['MACD'] = df['EMA_12'] - df['EMA_26']
         df['MACD_signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
@@ -76,9 +77,24 @@ class TechnicalAnalysis:
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         true_range = ranges.max(axis=1)
         df['ATR'] = true_range.rolling(window=14).mean()
+        df['ATR_50'] = true_range.rolling(window=50).mean()
+        df['ATR_ratio'] = df['ATR'] / df['ATR_50']
+        
+        df['ADR'] = (df['high'] - df['low']).rolling(window=14).mean()
+        
+        df['ADX'] = self._calculate_adx(df)
         
         df['highest_high'] = df['high'].rolling(window=20).max()
         df['lowest_low'] = df['low'].rolling(window=20).min()
+        df['highest_high_50'] = df['high'].rolling(window=50).max()
+        df['lowest_low_50'] = df['low'].rolling(window=50).min()
+        
+        current_price = df['close']
+        high_50 = df['highest_high_50']
+        low_50 = df['lowest_low_50']
+        price_range = high_50 - low_50
+        df['distance_from_high'] = (high_50 - current_price) / price_range.replace(0, 1)
+        df['distance_from_low'] = (current_price - low_50) / price_range.replace(0, 1)
         
         df['body'] = abs(df['close'] - df['open'])
         df['upper_wick'] = df['high'] - df[['close', 'open']].max(axis=1)
@@ -86,7 +102,39 @@ class TechnicalAnalysis:
         df['is_bullish'] = df['close'] > df['open']
         df['is_bearish'] = df['close'] < df['open']
         
+        df['volume_ratio'] = df['volume'] / df['volume'].rolling(window=20).mean() if 'volume' in df.columns else 1.0
+        
+        df['price_momentum'] = (df['close'] - df['close'].shift(10)) / df['close'].shift(10) * 100
+        
         self.data = df
+    
+    def _calculate_adx(self, df: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Calculate Average Directional Index (ADX)"""
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        plus_dm = high.diff()
+        minus_dm = low.diff().abs() * -1
+        
+        plus_dm = plus_dm.where((plus_dm > minus_dm.abs()) & (plus_dm > 0), 0)
+        minus_dm = minus_dm.abs().where((minus_dm.abs() > plus_dm) & (minus_dm < 0), 0)
+        
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low - close.shift()).abs()
+        ], axis=1).max(axis=1)
+        
+        atr = tr.rolling(window=period).mean()
+        
+        plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
+        minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
+        
+        dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di + 0.0001))
+        adx = dx.rolling(window=period).mean()
+        
+        return adx.fillna(25)
     
     def identify_trend(self) -> Tuple[str, float]:
         """Identify overall trend using MAs and price action"""
