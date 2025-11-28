@@ -284,6 +284,49 @@ class TradingEngine:
                     price_action_strategies.append('supply_demand_in_supply_zone')
                     break
         
+        # SMC Conflict Detection and Alignment
+        # BOS (Break of Structure) is the KEY trend indicator
+        # Never sell in bullish retracement (BOS bullish), never buy in bearish retracement (BOS bearish)
+        smc_conflict = False
+        smc_conflict_reason = None
+        
+        # Classify each SMC signal as bullish or bearish
+        bullish_smc = []
+        bearish_smc = []
+        bos_direction = None
+        
+        for strat in smc_strategies:
+            if 'bullish' in strat or 'buy' in strat or 'discount' in strat:
+                bullish_smc.append(strat)
+                if 'bos_bullish' in strat:
+                    bos_direction = 'bullish'
+            elif 'bearish' in strat or 'sell' in strat or 'premium' in strat:
+                bearish_smc.append(strat)
+                if 'bos_bearish' in strat:
+                    bos_direction = 'bearish'
+        
+        # Check for conflicts: BOS determines trend direction
+        if bullish_smc and bearish_smc:
+            # We have mixed signals - check if BOS aligns with trade direction
+            if bos_direction == 'bullish' and entry_signal in [Signal.SELL, Signal.STRONG_SELL]:
+                # Bearish signals in a bullish trend = retracement, don't sell
+                smc_conflict = True
+                smc_conflict_reason = f"SMC conflict: {bearish_smc} in bullish trend (BOS bullish) - never sell in bullish retracement"
+            elif bos_direction == 'bearish' and entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
+                # Bullish signals in a bearish trend = retracement, don't buy
+                smc_conflict = True
+                smc_conflict_reason = f"SMC conflict: {bullish_smc} in bearish trend (BOS bearish) - never buy in bearish retracement"
+            elif not bos_direction:
+                # No BOS signal but mixed SMC - conflict
+                smc_conflict = True
+                smc_conflict_reason = f"SMC conflict: mixed signals {bullish_smc} vs {bearish_smc} with no clear BOS direction"
+        
+        if smc_conflict:
+            logger.info(f"  {pair}: {smc_conflict_reason}")
+            trade_decision['reasons'].append(smc_conflict_reason)
+            # Clear SMC strategies to prevent this trade
+            smc_strategies = []
+        
         if tf_strategies.get('candlestick') in ['BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL']:
             price_action_strategies.append(f"candlestick_{tf_strategies['candlestick'].lower()}")
         
