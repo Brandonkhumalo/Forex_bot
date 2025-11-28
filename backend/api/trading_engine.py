@@ -726,12 +726,13 @@ class TradingEngine:
         logger.info(f"Trade closed by broker ({outcome_reason}): {trade.pair} {trade.direction} P/L: ${trade.profit_loss}")
     
     def _check_ml_retrain(self):
-        """Check if ML model needs retraining after trades are closed"""
-        if self.ml_engine.should_retrain():
-            logger.info(f"Triggering ML retrain for user {self.user.email}")
-            result = self.ml_engine.train()
-            if result:
-                logger.info(f"ML model retrained - accuracy: {result.get('accuracy', 0):.2%}")
+        """Check if any ML models need retraining after trades are closed"""
+        for pair in self.TRADING_PAIRS:
+            if self.ml_engine.should_retrain_pair(pair):
+                logger.info(f"Triggering ML retrain for {pair}")
+                result = self.ml_engine.train_pair(pair)
+                if result:
+                    logger.info(f"ML model for {pair} retrained - accuracy: {result.get('accuracy', 0):.2%}")
     
     def check_and_close_trades(self):
         if not self.authenticated:
