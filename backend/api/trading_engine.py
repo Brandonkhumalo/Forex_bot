@@ -390,18 +390,18 @@ class TradingEngine:
             stop_loss = entry_result.stop_loss
             take_profit = entry_result.take_profit
             
-            # XAU/USD (Gold) special SL/TP: fixed $10 distance, rounded to nearest 10
+            # XAU/USD (Gold) special SL/TP: SL=$10, TP=$15 distance, rounded to nearest 10
             if pair == 'XAU/USD':
                 # Round entry to nearest 10
                 rounded_entry = round(entry_price / 10) * 10
                 if trade_decision['direction'] == 'buy':
-                    # BUY: SL = rounded - 10, TP = rounded + 10
+                    # BUY: SL = rounded - 10, TP = rounded + 15
                     stop_loss = rounded_entry - 10
-                    take_profit = rounded_entry + 10
+                    take_profit = rounded_entry + 15
                 else:
-                    # SELL: SL = rounded + 10, TP = rounded - 10
+                    # SELL: SL = rounded + 10, TP = rounded - 15
                     stop_loss = rounded_entry + 10
-                    take_profit = rounded_entry - 10
+                    take_profit = rounded_entry - 15
                 logger.info(f"  {pair} XAU/USD SL/TP: entry={entry_price:.2f}, rounded={rounded_entry:.0f}, SL={stop_loss:.0f}, TP={take_profit:.0f}")
             
             # JPY pairs special SL/TP: SL = 1.5 pips, TP = 2.0 pips from rounded entry
