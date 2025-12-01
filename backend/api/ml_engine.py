@@ -488,6 +488,74 @@ class MLTradingEngine:
             random_state=42
         )
         
+        unique_classes = np.unique(y)
+        is_single_class = len(unique_classes) < 2
+        
+        if is_single_class:
+            logger.warning(f"{pair} has only one class (all {'wins' if y[0] == 1 else 'losses'}), creating baseline model")
+            X_scaled = scaler.fit_transform(X)
+            
+            from sklearn.dummy import DummyClassifier
+            rf_model = DummyClassifier(strategy='most_frequent')
+            xgb_model = DummyClassifier(strategy='most_frequent')
+            rf_model.fit(X_scaled, y)
+            xgb_model.fit(X_scaled, y)
+            
+            accuracy = 0.5
+            precision = 0.5
+            recall = 0.5
+            f1 = 0.5
+            cv_mean = 0.5
+            
+            self.models[pair] = rf_model
+            self.xgb_models[pair] = xgb_model
+            self.scalers[pair] = scaler
+            
+            feature_importance = {col: 1.0/len(self.feature_columns) for col in self.feature_columns}
+            
+            MLModel.objects.filter(user=self.user, pair=pair, is_active=True).update(is_active=False)
+            latest_version = MLModel.objects.filter(user=self.user, pair=pair).count() + 1
+            
+            model_data = pickle.dumps({
+                'rf_model': rf_model,
+                'xgb_model': xgb_model,
+                'scaler': scaler,
+                'meta_model': None,
+                'regime_model': None,
+                'tp_model': None,
+                'feature_columns': self.feature_columns,
+                'n_features': len(self.feature_columns)
+            })
+            
+            ml_model = MLModel.objects.create(
+                user=self.user,
+                pair=pair,
+                model_version=latest_version,
+                accuracy=accuracy,
+                precision=precision,
+                recall=recall,
+                f1_score=f1,
+                model_data=model_data,
+                trades_trained_on=len(trades),
+                feature_importance=feature_importance,
+                is_active=True
+            )
+            
+            logger.info(f"Created baseline model for {pair} v{latest_version} (single-class data)")
+            
+            return {
+                'pair': pair,
+                'version': latest_version,
+                'accuracy': accuracy,
+                'precision': precision,
+                'recall': recall,
+                'f1': f1,
+                'cv_score': cv_mean,
+                'n_features': len(self.feature_columns),
+                'n_samples': len(trades),
+                'note': 'Single-class baseline model - needs more diverse trade outcomes'
+            }
+        
         if len(X) < 3:
             X_scaled = scaler.fit_transform(X)
             rf_model.fit(X_scaled, y)
@@ -502,11 +570,8 @@ class MLTradingEngine:
             if len(X) - test_size < 2:
                 test_size = 1
             
-            # Check class distribution - need both classes in train set
-            unique_classes = np.unique(y)
-            min_class_count = min(np.sum(y == 0), np.sum(y == 1)) if len(unique_classes) > 1 else 0
+            min_class_count = min(np.sum(y == 0), np.sum(y == 1))
             
-            # Use stratified split only if we have enough samples of each class
             try:
                 if min_class_count >= 2:
                     X_train, X_test, y_train, y_test = train_test_split(
@@ -517,12 +582,10 @@ class MLTradingEngine:
                         X, y, test_size=test_size, random_state=42
                     )
                 
-                # Verify both classes exist in training set
                 if len(np.unique(y_train)) < 2:
                     raise ValueError("Training set has only one class")
                     
             except ValueError:
-                # Fall back to training on all data if split fails
                 logger.warning(f"Cannot split {pair} data properly, training on full dataset")
                 X_scaled = scaler.fit_transform(X)
                 rf_model.fit(X_scaled, y)
