@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { 
   BarChart3, TrendingUp, TrendingDown, Target, 
-  Brain, Clock, PieChart, Activity, ChevronLeft, ChevronRight, DollarSign
+  Brain, Clock, PieChart, Activity, ChevronLeft, ChevronRight, DollarSign,
+  Loader2, Zap, RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +11,19 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart as RechartsPie, Pie, Cell, Legend
 } from 'recharts';
 import { authFetch } from '@/lib/auth';
+import { queryClient } from '@/lib/queryClient';
 
 interface AnalyticsData {
   total_trades: number;
@@ -67,6 +77,7 @@ interface MLStatus {
   pair_progress: PairProgress[];
   trained_pairs_count: number;
   total_pairs: number;
+  trading_pairs: string[];
   model: {
     accuracy: number;
     precision: number;
@@ -77,6 +88,40 @@ interface MLStatus {
   } | null;
   last_trained: string | null;
   trades_until_retrain: number;
+}
+
+interface TrainResult {
+  success: boolean;
+  message: string;
+  result?: {
+    pair: string;
+    version: number;
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1: number;
+    cv_score: number;
+    n_features: number;
+    n_samples: number;
+    note: string;
+  };
+}
+
+interface TrainAllResult {
+  success: boolean;
+  message: string;
+  trained: Array<{
+    pair: string;
+    version: number;
+    accuracy: number;
+    cv_score: number;
+    note: string;
+  }>;
+  errors: Array<{
+    pair: string;
+    error: string;
+  }>;
+  skipped: string[];
 }
 
 function formatCurrency(value: number): string {
@@ -140,6 +185,8 @@ const COLORS = ['hsl(217, 91%, 60%)', 'hsl(142, 76%, 46%)', 'hsl(38, 92%, 50%)',
 
 export default function Analytics() {
   const [pairGalleryIndex, setPairGalleryIndex] = useState(0);
+  const [selectedPair, setSelectedPair] = useState<string>('');
+  const { toast } = useToast();
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ['/api/analytics/'],
@@ -159,7 +206,73 @@ export default function Analytics() {
     },
   });
 
+  const trainMutation = useMutation({
+    mutationFn: async (pair: string) => {
+      const res = await authFetch('/api/ml/train/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pair }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Training failed');
+      return data as TrainResult;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ml/status/'] });
+      toast({
+        title: 'Model Trained',
+        description: data.result?.note || 
+          `${data.result?.pair} v${data.result?.version} - Accuracy: ${((data.result?.accuracy || 0) * 100).toFixed(1)}%`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Training Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const trainAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch('/api/ml/train-all/', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      return data as TrainAllResult;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ml/status/'] });
+      toast({
+        title: 'Bulk Training Complete',
+        description: data.message,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Training Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   const isLoading = analyticsLoading || mlLoading;
+  
+  const getPairTradeCount = (pair: string): number => {
+    const progress = mlStatus?.pair_progress?.find(p => p.pair === pair);
+    return progress?.closed_trades || 0;
+  };
+  
+  const canTrainPair = (pair: string): boolean => {
+    const count = getPairTradeCount(pair);
+    return count >= (mlStatus?.min_trades_per_pair || 5);
+  };
+  
+  const trainablePairsCount = mlStatus?.pair_progress?.filter(
+    p => p.closed_trades >= (mlStatus?.min_trades_per_pair || 5)
+  ).length || 0;
 
   const pairData = analytics?.pair_performance 
     ? Object.entries(analytics.pair_performance).map(([pair, data]) => ({
@@ -505,6 +618,145 @@ export default function Analytics() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ML Training Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Manual ML Training
+          </CardTitle>
+          <CardDescription>
+            Train machine learning models manually for specific pairs or all eligible pairs
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {/* Train Single Pair */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Train Individual Pair</h4>
+              <div className="flex flex-wrap items-center gap-3">
+                <Select 
+                  value={selectedPair} 
+                  onValueChange={setSelectedPair}
+                >
+                  <SelectTrigger 
+                    className="w-48" 
+                    data-testid="select-train-pair"
+                  >
+                    <SelectValue placeholder="Select a pair..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mlStatus?.trading_pairs?.map((pair) => {
+                      const tradeCount = getPairTradeCount(pair);
+                      const isTrainable = canTrainPair(pair);
+                      return (
+                        <SelectItem 
+                          key={pair} 
+                          value={pair}
+                          disabled={!isTrainable}
+                        >
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span>{pair}</span>
+                            <span className={`text-xs ${isTrainable ? 'text-success' : 'text-muted-foreground'}`}>
+                              ({tradeCount} trades)
+                            </span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={() => selectedPair && trainMutation.mutate(selectedPair)}
+                  disabled={!selectedPair || !canTrainPair(selectedPair) || trainMutation.isPending}
+                  data-testid="button-train-pair"
+                >
+                  {trainMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Training...
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="h-4 w-4 mr-2" />
+                      Train Model
+                    </>
+                  )}
+                </Button>
+              </div>
+              {selectedPair && !canTrainPair(selectedPair) && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedPair} needs at least {mlStatus?.min_trades_per_pair || 5} closed trades to train.
+                  Currently has {getPairTradeCount(selectedPair)}.
+                </p>
+              )}
+            </div>
+
+            {/* Train All Models */}
+            <div className="pt-4 border-t space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-medium text-sm">Train All Eligible Models</h4>
+                  <p className="text-xs text-muted-foreground">
+                    {trainablePairsCount} pairs have 5+ trades and can be trained
+                  </p>
+                </div>
+                <Button
+                  onClick={() => trainAllMutation.mutate()}
+                  disabled={trainablePairsCount === 0 || trainAllMutation.isPending}
+                  variant="secondary"
+                  data-testid="button-train-all"
+                >
+                  {trainAllMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Training All...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Train All Models ({trainablePairsCount})
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Training Status Grid */}
+            {mlStatus?.pair_progress && (
+              <div className="pt-4 border-t">
+                <h4 className="font-medium text-sm mb-3">Pair Status</h4>
+                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
+                  {mlStatus.pair_progress.map((pairStatus) => (
+                    <div 
+                      key={pairStatus.pair}
+                      className={`p-2 rounded-md text-xs ${
+                        pairStatus.is_trained 
+                          ? 'bg-success/10 border border-success/30' 
+                          : pairStatus.closed_trades >= (mlStatus.min_trades_per_pair || 5)
+                            ? 'bg-primary/10 border border-primary/30'
+                            : 'bg-muted/50 border border-border'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{pairStatus.pair}</span>
+                        <span className="font-mono">{pairStatus.closed_trades}/{pairStatus.required_trades}</span>
+                      </div>
+                      {pairStatus.is_trained && (
+                        <div className="flex items-center justify-between mt-1 text-success">
+                          <span>v{pairStatus.model_version}</span>
+                          <span>{(pairStatus.accuracy * 100).toFixed(0)}%</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -29,6 +29,8 @@ urlpatterns = [
     
     path('ml/status/', views.get_ml_status, name='ml_status'),
     path('ml/models/', views.get_ml_models, name='ml_models'),
+    path('ml/train/', views.train_ml_model, name='train_ml_model'),
+    path('ml/train-all/', views.train_all_models, name='train_all_models'),
     
     path('events/', views.get_economic_events, name='economic_events'),
     

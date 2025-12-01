@@ -795,3 +795,118 @@ def run_trading_cycle(request):
             'message': f'Error running trading cycle: {str(e)}',
             'trades_executed': 0
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def train_ml_model(request):
+    """Manually train ML model for a specific pair"""
+    from .ml_engine import MLTradingEngine, TRADING_PAIRS, MIN_TRADES_PER_PAIR
+    
+    pair = request.data.get('pair')
+    
+    if not pair:
+        return Response({
+            'success': False,
+            'message': 'No pair specified'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if pair not in TRADING_PAIRS:
+        return Response({
+            'success': False,
+            'message': f'Invalid pair: {pair}. Available pairs: {", ".join(TRADING_PAIRS)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    closed_trades = Trade.objects.filter(
+        user=request.user,
+        pair=pair,
+        status='closed'
+    ).count()
+    
+    if closed_trades < MIN_TRADES_PER_PAIR:
+        return Response({
+            'success': False,
+            'message': f'{pair} has only {closed_trades} closed trades. Need at least {MIN_TRADES_PER_PAIR} trades to train.',
+            'closed_trades': closed_trades,
+            'required': MIN_TRADES_PER_PAIR
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        ml_engine = MLTradingEngine(request.user)
+        result = ml_engine.train_pair(pair)
+        
+        if result:
+            return Response({
+                'success': True,
+                'message': f'Successfully trained {pair} model',
+                'result': {
+                    'pair': result.get('pair'),
+                    'version': result.get('version'),
+                    'accuracy': result.get('accuracy', 0),
+                    'precision': result.get('precision', 0),
+                    'recall': result.get('recall', 0),
+                    'f1': result.get('f1', 0),
+                    'cv_score': result.get('cv_score', 0),
+                    'n_features': result.get('n_features', 0),
+                    'n_samples': result.get('n_samples', 0),
+                    'note': result.get('note', '')
+                }
+            })
+        else:
+            return Response({
+                'success': False,
+                'message': f'Failed to train {pair} model'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error training model: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def train_all_models(request):
+    """Train ML models for all pairs with sufficient trades"""
+    from .ml_engine import MLTradingEngine, TRADING_PAIRS, MIN_TRADES_PER_PAIR
+    
+    ml_engine = MLTradingEngine(request.user)
+    results = []
+    errors = []
+    
+    for pair in TRADING_PAIRS:
+        closed_trades = Trade.objects.filter(
+            user=request.user,
+            pair=pair,
+            status='closed'
+        ).count()
+        
+        if closed_trades >= MIN_TRADES_PER_PAIR:
+            try:
+                result = ml_engine.train_pair(pair)
+                if result:
+                    results.append({
+                        'pair': pair,
+                        'version': result.get('version'),
+                        'accuracy': result.get('accuracy', 0),
+                        'cv_score': result.get('cv_score', 0),
+                        'note': result.get('note', '')
+                    })
+                else:
+                    errors.append({
+                        'pair': pair,
+                        'error': 'Training failed'
+                    })
+            except Exception as e:
+                errors.append({
+                    'pair': pair,
+                    'error': str(e)
+                })
+    
+    return Response({
+        'success': len(results) > 0,
+        'message': f'Trained {len(results)} model(s), {len(errors)} error(s)',
+        'trained': results,
+        'errors': errors,
+        'skipped': [pair for pair in TRADING_PAIRS if pair not in [r['pair'] for r in results] and pair not in [e['pair'] for e in errors]]
+    })
