@@ -994,7 +994,7 @@ class MLTradingEngine:
         
         trades_since_training = current_trades - ml_model.trades_trained_on
         
-        if trades_since_training >= 3:
+        if trades_since_training >= 5:
             self.ai_logger.log_retrain_trigger(pair, trades_since_training)
             return True
         
