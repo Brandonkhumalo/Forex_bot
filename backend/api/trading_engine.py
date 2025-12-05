@@ -424,20 +424,30 @@ class TradingEngine:
                 should_trade = False
                 reasons.append("No clear directional signal")
         
-        # Direction Bias Restrictions based on historical performance data
-        # AUD/USD SELL trades: 2/7 = 28.6% win rate - BLOCKED
-        # USD/CAD BUY trades: 2/7 = 28.6% win rate - BLOCKED
-        DIRECTION_RESTRICTIONS = {
-            'AUD/USD': 'sell',  # Block SELL trades for AUD/USD
-            'USD/CAD': 'buy',   # Block BUY trades for USD/CAD
-        }
+        # Trend Alignment Requirement for underperforming pairs
+        # These pairs historically lose when trading AGAINST the trend
+        # Rule: Entry direction MUST match trend direction (never trade against trend)
+        TREND_ALIGNMENT_REQUIRED_PAIRS = ['AUD/USD', 'USD/CAD']
         
-        if should_trade and pair in DIRECTION_RESTRICTIONS:
-            blocked_direction = DIRECTION_RESTRICTIONS[pair]
-            if trade_decision.get('direction') == blocked_direction:
-                should_trade = False
-                reasons.append(f"Direction bias: {blocked_direction.upper()} blocked for {pair} (historically poor performance)")
-                logger.info(f"  {pair}: Blocked {blocked_direction.upper()} trade due to direction bias restriction")
+        if should_trade and pair in TREND_ALIGNMENT_REQUIRED_PAIRS:
+            entry_direction = trade_decision.get('direction')
+            # Check if entry direction matches trend
+            trend_is_buy = trend in [Signal.BUY, Signal.STRONG_BUY]
+            trend_is_sell = trend in [Signal.SELL, Signal.STRONG_SELL]
+            trend_is_neutral = trend == Signal.NEUTRAL
+            
+            # If trend is neutral, allow any direction
+            if not trend_is_neutral:
+                if trend_is_buy and entry_direction == 'sell':
+                    # Trying to SELL when trend is BUY = against trend
+                    should_trade = False
+                    reasons.append(f"Trend alignment: SELL blocked - trend is BUY for {pair} (never trade against trend)")
+                    logger.info(f"  {pair}: Blocked SELL trade - trend is BUY (must follow trend)")
+                elif trend_is_sell and entry_direction == 'buy':
+                    # Trying to BUY when trend is SELL = against trend
+                    should_trade = False
+                    reasons.append(f"Trend alignment: BUY blocked - trend is SELL for {pair} (never trade against trend)")
+                    logger.info(f"  {pair}: Blocked BUY trade - trend is SELL (must follow trend)")
         
         trade_decision['should_trade'] = should_trade
         trade_decision['strategy_category'] = strategy_category
