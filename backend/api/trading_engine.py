@@ -264,8 +264,10 @@ class TradingEngine:
         if structure and structure.get('bos'):
             smc_strategies.append(f"bos_{structure['bos'].get('type', 'unknown')}")
         
+        # Premium/Discount strategy - DISABLED for USD/CAD and AUD/USD due to poor performance
+        PREMIUM_DISCOUNT_DISABLED_PAIRS = ['USD/CAD', 'AUD/USD']
         fib_zones = analysis.get('fib_zones', {})
-        if fib_zones:
+        if fib_zones and pair not in PREMIUM_DISCOUNT_DISABLED_PAIRS:
             current_zone = fib_zones.get('current_zone', 'neutral')
             if current_zone == 'discount' and entry_signal in [Signal.BUY, Signal.STRONG_BUY]:
                 smc_strategies.append('premium_discount_buy_in_discount')
@@ -421,6 +423,21 @@ class TradingEngine:
             else:
                 should_trade = False
                 reasons.append("No clear directional signal")
+        
+        # Direction Bias Restrictions based on historical performance data
+        # AUD/USD SELL trades: 2/7 = 28.6% win rate - BLOCKED
+        # USD/CAD BUY trades: 2/7 = 28.6% win rate - BLOCKED
+        DIRECTION_RESTRICTIONS = {
+            'AUD/USD': 'sell',  # Block SELL trades for AUD/USD
+            'USD/CAD': 'buy',   # Block BUY trades for USD/CAD
+        }
+        
+        if should_trade and pair in DIRECTION_RESTRICTIONS:
+            blocked_direction = DIRECTION_RESTRICTIONS[pair]
+            if trade_decision.get('direction') == blocked_direction:
+                should_trade = False
+                reasons.append(f"Direction bias: {blocked_direction.upper()} blocked for {pair} (historically poor performance)")
+                logger.info(f"  {pair}: Blocked {blocked_direction.upper()} trade due to direction bias restriction")
         
         trade_decision['should_trade'] = should_trade
         trade_decision['strategy_category'] = strategy_category
