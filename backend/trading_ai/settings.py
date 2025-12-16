@@ -58,12 +58,26 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'trading_ai.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+import dj_database_url
+
+RAILWAY_DB_URL = os.environ.get('RAILWAY_DB_URL')
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if RAILWAY_DB_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(RAILWAY_DB_URL)
     }
-}
+elif DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL)
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
