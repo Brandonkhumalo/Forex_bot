@@ -1,9 +1,8 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic import TemplateView
 from django.conf import settings
-from django.conf.urls.static import static
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
+from django.views.static import serve as static_serve
 import os
 
 def serve_react(request, path=''):
@@ -11,19 +10,20 @@ def serve_react(request, path=''):
     index_path = os.path.join(settings.BASE_DIR, 'static', 'index.html')
     if os.path.exists(index_path):
         return FileResponse(open(index_path, 'rb'), content_type='text/html')
-    from django.http import HttpResponse
     return HttpResponse("Frontend not built. Run: npm run build", status=404)
+
+def serve_assets(request, path):
+    """Serve React assets from /assets/ path"""
+    assets_path = os.path.join(settings.BASE_DIR, 'static', 'assets')
+    return static_serve(request, path, document_root=assets_path)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    re_path(r'^assets/(?P<path>.*)$', serve_assets),
 ]
 
 # Serve React frontend for all other routes
 urlpatterns += [
-    re_path(r'^(?!api/|admin/|static/).*$', serve_react),
+    re_path(r'^(?!api/|admin/|static/|assets/).*$', serve_react),
 ]
-
-# Serve static files in development
-if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
