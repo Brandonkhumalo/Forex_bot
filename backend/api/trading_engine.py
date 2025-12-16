@@ -234,7 +234,8 @@ class TradingEngine:
             logger.info(f"  {pair}: Skipping - timeframes not aligned")
             return {**analysis, 'trade_decision': trade_decision}
         
-        min_confidence = 0.30
+        # XAU/USD has lower confidence threshold due to ranging market conditions
+        min_confidence = 0.20 if pair == 'XAU/USD' else 0.30
         if confidence < min_confidence:
             trade_decision['reasons'].append(f'Confidence {confidence:.2f} < {min_confidence}')
             logger.info(f"  {pair}: Skipping - confidence too low ({confidence:.2f} < {min_confidence})")
