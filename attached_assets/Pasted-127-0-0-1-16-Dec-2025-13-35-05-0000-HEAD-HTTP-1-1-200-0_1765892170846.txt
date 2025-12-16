@@ -1,0 +1,138 @@
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "GET / HTTP/1.1" 200 0 "-" "Go-http-client/2.0"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+127.0.0.1 - - [16/Dec/2025:13:35:05 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+[2025-12-16 13:34:51 +0000] [89] [INFO] Booting worker with pid: 89
+[2025-12-16 13:34:51 +0000] [57] [ERROR] Worker (pid:60) was sent SIGKILL! Perhaps out of memory?
+[2025-12-16 13:34:50 +0000] [60] [INFO] Worker exiting (pid: 60)
+SystemExit: 1
+    ~~~~~~~~^^^
+    sys.exit(1)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+    )
+    ...<21 lines>...
+    from sklearn.metrics._classification import (
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/sklearn/metrics/__init__.py", line 7, in <module>
+    from sklearn.metrics import accuracy_score, r2_score
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/sklearn/ensemble/_bagging.py", line 17, in <module>
+    from sklearn.ensemble._bagging import BaggingClassifier, BaggingRegressor
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/sklearn/ensemble/__init__.py", line 6, in <module>
+    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+  File "/opt/render/project/src/backend/api/ml_engine.py", line 8, in <module>
+    from .ml_engine import MLTradingEngine, MIN_TRADES_PER_PAIR
+  File "/opt/render/project/src/backend/api/trading_engine.py", line 10, in <module>
+    from .trading_engine import TradingEngine
+  File "/opt/render/project/src/backend/api/views.py", line 24, in <module>
+    from . import views
+  File "/opt/render/project/src/backend/api/urls.py", line 3, in <module>
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/importlib/__init__.py", line 88, in import_module
+    urlconf_module = import_module(urlconf_module)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/urls/conf.py", line 39, in include
+                 ~~~~~~~^^^^^^^^^^^^
+    path('api/', include('api.urls')),
+  File "/opt/render/project/src/backend/trading_ai/urls.py", line 19, in <module>
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/importlib/__init__.py", line 88, in import_module
+    return import_module(self.urlconf_name)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/urls/resolvers.py", line 722, in urlconf_module
+                                         ~~~~~~~~~^^^^^^^^^^
+    res = instance.__dict__[self.name] = self.func(instance)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/functional.py", line 47, in __get__
+                       ^^^^^^^^^^^^^^^^^^^
+    patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/urls/resolvers.py", line 729, in url_patterns
+                                         ~~~~~~~~~^^^^^^^^^^
+    res = instance.__dict__[self.name] = self.func(instance)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/functional.py", line 47, in __get__
+                   ^^^^^^^^^^^^^^^^^
+    for pattern in self.url_patterns:
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/urls/resolvers.py", line 676, in resolve
+    resolver_match = resolver.resolve(request.path_info)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/base.py", line 314, in resolve_request
+                                               ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+    callback, callback_args, callback_kwargs = self.resolve_request(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/base.py", line 182, in _get_response
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    return self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/whitenoise/middleware.py", line 123, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^
+    response = response or self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/utils/deprecation.py", line 309, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+    result = self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/corsheaders/middleware.py", line 53, in __call__
+    response = get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = self._middleware_chain(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/base.py", line 141, in get_response
+    response = self.get_response(request)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/django/core/handlers/wsgi.py", line 124, in __call__
+    respiter = self.wsgi(environ, resp.start_response)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/gunicorn/workers/sync.py", line 177, in handle_request
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    self.handle_request(listener, req, client, addr)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/gunicorn/workers/sync.py", line 134, in handle
+Traceback (most recent call last):
+[2025-12-16 13:34:50 +0000] [60] [ERROR] Error handling request /
+127.0.0.1 - - [16/Dec/2025:13:34:50 +0000] "HEAD / HTTP/1.1" 500 0 "-" "-"
+[2025-12-16 13:34:50 +0000] [57] [CRITICAL] WORKER TIMEOUT (pid:60)
+==> No open HTTP ports detected on 0.0.0.0, continuing to scan...
+==> ///////////////////////////////////////////////////////////
+==> 
+==> Available at your primary URL https://forex-bot-5unc.onrender.com
