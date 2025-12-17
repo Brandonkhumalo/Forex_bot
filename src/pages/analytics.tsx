@@ -324,13 +324,13 @@ export default function Analytics() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground">Performance metrics and AI trading insights</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Analytics</h1>
+        <p className="text-muted-foreground text-sm sm:text-base">Performance metrics and AI trading insights</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Trades"
           value={String(analytics?.total_trades ?? 0)}
@@ -404,7 +404,7 @@ export default function Analytics() {
               </div>
 
               <div className="p-4 bg-muted/50 rounded-lg">
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
                   <div>
                     <p className="text-sm text-muted-foreground">Total P/L</p>
                     <p className={`text-2xl font-bold font-mono ${
@@ -449,7 +449,7 @@ export default function Analytics() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -537,7 +537,7 @@ export default function Analytics() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -727,7 +727,7 @@ export default function Analytics() {
             {mlStatus?.pair_progress && (
               <div className="pt-4 border-t">
                 <h4 className="font-medium text-sm mb-3">Pair Status</h4>
-                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
+                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {mlStatus.pair_progress.map((pairStatus) => (
                     <div 
                       key={pairStatus.pair}

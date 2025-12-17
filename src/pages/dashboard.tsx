@@ -325,9 +325,9 @@ export default function Dashboard() {
   const aiEnabled = dashboard?.ai_status ?? false;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold">Trading Dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Trading Dashboard</h1>
         <p className="text-muted-foreground">Monitor your AI trading performance in real-time</p>
       </div>
 
@@ -366,7 +366,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         <StatCard
           title="Account Balance"
           value={formatCurrency(dashboard?.account_balance ?? 0)}
@@ -404,7 +404,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -601,7 +601,8 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : openTrades && openTrades.length > 0 ? (
-              <Table>
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <Table className="min-w-[600px] sm:min-w-0">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Pair</TableHead>
@@ -658,6 +659,7 @@ export default function Dashboard() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
@@ -683,12 +685,13 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           {recentTrades && recentTrades.length > 0 ? (
-            <Table>
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <Table className="min-w-[700px] sm:min-w-0">
               <TableHeader>
                 <TableRow>
                   <TableHead>Pair</TableHead>
                   <TableHead>Direction</TableHead>
-                  <TableHead>Strategy</TableHead>
+                  <TableHead className="hidden sm:table-cell">Strategy</TableHead>
                   <TableHead className="text-right">Entry</TableHead>
                   <TableHead className="text-right">Exit</TableHead>
                   <TableHead className="text-right">P/L</TableHead>
@@ -714,7 +717,7 @@ export default function Dashboard() {
                           {trade.direction.toUpperCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">
                         {trade.strategy_used || 'Technical'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
@@ -738,6 +741,7 @@ export default function Dashboard() {
                 })}
               </TableBody>
             </Table>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Clock className="h-8 w-8 text-muted-foreground mb-2" />
